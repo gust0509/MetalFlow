@@ -623,6 +623,7 @@ function renderOrderCard(o,i){
       </div>
       <div style="display:flex;gap:6px">
         <button class="icon-btn" onclick="openViewModal('${o.id}')">👁</button>
+        <button class="icon-btn" style="color:#3B82F6" onclick="openEditOrderModal('${o.id}')">✏️</button>
         ${o.status!=="延誤"&&o.status!=="完成"?`<button class="icon-btn" style="color:#F59E0B" onclick="markDelay('${o.id}')">⚠</button>`:""}
         ${si<STAGES.length-1?`<button class="adv-btn" onclick="advanceOrder('${o.id}')">▶📱</button>`:""}
       </div>
@@ -663,7 +664,10 @@ function renderFlow(){
             <div style="font-size:12px;font-weight:700;margin-top:6px;font-family:'Syne',sans-serif">${esc(o.customer)}</div>
             <div style="font-size:11px;color:var(--muted)">${esc(o.part)}</div>
             <div style="font-size:10px;color:var(--dim);margin-top:4px">截止：${o.deadline}</div>
-            ${stgIdx(o.stage)<STAGES.length-1?`<button class="adv-btn" style="margin-top:8px;width:100%;justify-content:center;font-size:11px" onclick="advanceOrder('${o.id}')">▶ 推進 + 📱LINE</button>`:""}
+            <div style="display:flex;gap:6px;margin-top:8px">
+              <button class="icon-btn" style="flex:1;font-size:11px;justify-content:center;color:#3B82F6" onclick="openEditOrderModal('${o.id}')">✏️ 編輯</button>
+              ${stgIdx(o.stage)<STAGES.length-1?`<button class="adv-btn" style="flex:1;justify-content:center;font-size:11px" onclick="advanceOrder('${o.id}')">▶📱推進</button>`:""}
+            </div>
           </div>`).join("")}
         ${cols.length===0?`<div style="font-size:11px;color:var(--border2);text-align:center;padding:16px 0">— 空 —</div>`:""}
       </div>
@@ -1054,7 +1058,10 @@ function openViewModal(id){
       <div class="bar-bg" style="height:8px"><div class="bar-fill" style="height:8px;width:${pct}%;background:linear-gradient(90deg,#3B82F6,${s.color})"></div></div>
     </div>
     ${[["工單號",o.id],["客戶",o.customer],["品名",o.part],["數量",`${o.qty} 件`],["材質",o.material],["產業",o.industry],["截止日期",o.deadline],["金額",o.amount>0?`NT$ ${o.amount.toLocaleString()}`:"未定"],["狀態",o.status],["優先",o.priority],["備註",o.note||"—"]].map(([k,v])=>`<div class="detail-row"><span class="detail-key">${k}</span><span class="detail-val">${esc(v)}</span></div>`).join("")}
-    <button style="background:#06C755;color:#fff;border:none;border-radius:10px;padding:11px;width:100%;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;margin-top:14px" onclick="sendCurrentOrderLine('${o.id}');closeModal()">📱 發送進度通知給客戶</button>
+    <div style="display:flex;gap:10px;margin-top:14px">
+      <button style="background:#3B82F6;color:#fff;border:none;border-radius:10px;padding:11px;flex:1;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit" onclick="closeModal();openEditOrderModal('${o.id}')">✏️ 編輯工單</button>
+      <button style="background:#06C755;color:#fff;border:none;border-radius:10px;padding:11px;flex:1;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit" onclick="sendCurrentOrderLine('${o.id}');closeModal()">📱 通知客戶</button>
+    </div>
     <button class="icon-btn" style="width:100%;padding:10px;margin-top:8px;text-align:center" onclick="closeModal()">關閉</button>`;
   $("modal-wrap").classList.add("show");
 }
@@ -1103,6 +1110,64 @@ async function submitNewOrder(){
   }catch(e){
     console.error("建立工單失敗:",e);
     showToast("建立工單失敗","error");
+  }
+}
+function openEditOrderModal(id){
+  const o=state.orders.find(x=>x.id===id); if(!o)return;
+  const statusOpts=["待處理","進行中","延誤","完成"];
+  const industryOpts=["機械設備","半導體設備","自動化設備","重電","客製板金"];
+  const priorityOpts=["高","中","低"];
+  $("modal-box").innerHTML=`
+    <div class="modal-head"><div class="modal-title">✏️ 編輯工單 ${o.id}</div><button class="close-btn" onclick="closeModal()">✕</button></div>
+    <div class="form-grid">
+      <div><label class="lbl">客戶名稱*</label><input class="inp" id="edf-customer" value="${esc(o.customer)}"></div>
+      <div><label class="lbl">品名*</label><input class="inp" id="edf-part" value="${esc(o.part)}"></div>
+      <div><label class="lbl">數量*</label><input class="inp" type="number" id="edf-qty" value="${o.qty}"></div>
+      <div><label class="lbl">材質</label><input class="inp" id="edf-material" value="${esc(o.material||"")}"></div>
+      <div><label class="lbl">截止日期</label><input class="inp" type="date" id="edf-deadline" value="${o.deadline||""}"></div>
+      <div><label class="lbl">金額(NT$)</label><input class="inp" type="number" id="edf-amount" value="${o.amount||0}"></div>
+    </div>
+    <div class="form-grid">
+      <div><label class="lbl">產業</label><select class="inp" id="edf-industry">${industryOpts.map(x=>`<option${o.industry===x?" selected":""}>${x}</option>`).join("")}</select></div>
+      <div><label class="lbl">優先</label><select class="inp" id="edf-priority">${priorityOpts.map(x=>`<option${o.priority===x?" selected":""}>${x}</option>`).join("")}</select></div>
+    </div>
+    <div class="form-grid">
+      <div><label class="lbl">製程站點</label><select class="inp" id="edf-stage">${STAGES.map(s=>`<option value="${s.id}"${o.stage===s.id?" selected":""}>${s.label}</option>`).join("")}</select></div>
+      <div><label class="lbl">狀態</label><select class="inp" id="edf-status">${statusOpts.map(x=>`<option${o.status===x?" selected":""}>${x}</option>`).join("")}</select></div>
+    </div>
+    <div style="margin-bottom:14px"><label class="lbl">備註</label><input class="inp" id="edf-note" value="${esc(o.note||"")}"></div>
+    <div style="display:flex;gap:10px">
+      <button class="accent-btn" style="flex:1;padding:11px" onclick="submitEditOrder('${o.id}')">💾 儲存變更</button>
+      <button class="icon-btn" style="flex:1;padding:11px;text-align:center" onclick="closeModal()">取消</button>
+    </div>
+    ${currentUserRole==="admin"?`<button style="background:#7F1D1D;color:#FCA5A5;border:1px solid #991B1B;border-radius:10px;padding:10px;width:100%;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;margin-top:10px" onclick="deleteOrder('${o.id}')">🗑️ 刪除此工單</button>`:""}`;
+  $("modal-wrap").classList.add("show");
+}
+async function submitEditOrder(id){
+  const g=fid=>$(fid)?.value||"";
+  const customer=g("edf-customer"), part=g("edf-part"), qty=g("edf-qty");
+  if(!customer||!part||!qty){showToast("請填必填欄位","error");return;}
+  const updates={customer,part,qty:parseInt(qty),material:g("edf-material"),stage:g("edf-stage"),priority:g("edf-priority"),deadline:g("edf-deadline"),amount:parseFloat(g("edf-amount"))||0,note:g("edf-note"),industry:g("edf-industry"),status:g("edf-status")};
+  try{
+    await db.collection("orders").doc(id).update(updates);
+    pushNotif(`工單 ${id} 已更新`,"success");
+    showToast("工單已更新");
+    closeModal();
+  }catch(e){
+    console.error("更新工單失敗:",e);
+    showToast("更新工單失敗","error");
+  }
+}
+async function deleteOrder(id){
+  if(!confirm(`確定要刪除工單 ${id} 嗎？此操作無法復原。`))return;
+  try{
+    await db.collection("orders").doc(id).delete();
+    pushNotif(`工單 ${id} 已刪除`,"warn");
+    showToast("工單已刪除");
+    closeModal();
+  }catch(e){
+    console.error("刪除工單失敗:",e);
+    showToast("刪除工單失敗","error");
   }
 }
 function closeModal(){$("modal-wrap").classList.remove("show");}
