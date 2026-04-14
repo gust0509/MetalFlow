@@ -258,20 +258,22 @@ const STAGES=[
 const STAGE_IDS=STAGES.map(s=>s.id);
 const STATUS_COLOR={"待處理":"#F59E0B","進行中":"#3B82F6","完成":"#22C55E","延誤":"#EF4444"};
 const TABS=[
-  {id:"dashboard",label:"儀表板",icon:"◈",roles:["admin","manager","operator","sales"]},
-  {id:"orders",label:"工單",icon:"⊞",roles:["admin","manager","operator"]},
-  {id:"flow",label:"看板",icon:"⟳",roles:["admin","manager","operator"]},
+  {id:"dashboard",label:"儀表板",icon:"◈",roles:["admin","manager","operator","floor","sales"]},
+  {id:"orders",label:"工單",icon:"⊞",roles:["admin","manager","operator","floor"]},
+  {id:"flow",label:"看板",icon:"⟳",roles:["admin","manager","operator","floor"]},
   {id:"quotes",label:"報價",icon:"¥",roles:["admin","manager","sales"]},
+  {id:"service",label:"售服",icon:"🔧",roles:["admin","manager","operator","floor","sales"]},
   {id:"line",label:"LINE",icon:"◉",roles:["admin","manager"]},
   {id:"analytics",label:"分析",icon:"◎",roles:["admin","manager"]},
   {id:"users",label:"使用者",icon:"👥",roles:["admin"]},
-  {id:"notif",label:"通知",icon:"◆",roles:["admin","manager","operator","sales"]},
+  {id:"notif",label:"通知",icon:"◆",roles:["admin","manager","operator","floor","sales"]},
 ];
 let state={
   tab:"dashboard",
   orders:[],
   quotes:[],
   users:[],
+  serviceReports:[],
   lineLog:[],
   notifications:[],
   unread:0,
@@ -386,7 +388,7 @@ function handleSignup(e){
 async function setupNewUser(user){
   const usersRef=db.collection("users");
   const snap=await usersRef.get();
-  const role=snap.empty?"admin":"operator";
+  const role=snap.empty?"admin":"floor";
   await usersRef.doc(user.uid).set({
     email:user.email,
     role:role,
@@ -441,7 +443,7 @@ function updateUserDisplay(){
   if(currentUser){
     ava.textContent=(currentUser.email||"U").charAt(0).toUpperCase();
     name.textContent=currentUser.email.split("@")[0]||"User";
-    const roleLabel={admin:"系統管理員",manager:"主管",operator:"現場人員",sales:"業務"}[currentUserRole]||"使用者";
+    const roleLabel={admin:"系統管理員",manager:"主管",operator:"操作員",floor:"現場人員",sales:"業務"}[currentUserRole]||"使用者";
     role.textContent=roleLabel;
   }
 }
@@ -473,6 +475,17 @@ async function subscribeToFirestore(){
       render();
     }, err=>console.error("訂閱報價失敗:",err));
 
+  db.collection("serviceReports")
+    .onSnapshot(snap=>{
+      state.serviceReports=snap.docs.map(d=>({...d.data(),id:d.id}))
+        .sort((a,b)=>{
+          const aTime=(a.createdTime?.toDate?.()?.getTime?.())||0;
+          const bTime=(b.createdTime?.toDate?.()?.getTime?.())||0;
+          return bTime-aTime;
+        });
+      render();
+    }, err=>console.error("訂閱售服失敗:",err));
+
   if(currentUserRole==="admin"){
     await loadAllUsers();
   }
@@ -499,6 +512,7 @@ function render(){
   else if(state.tab==="orders") c.innerHTML=renderOrders();
   else if(state.tab==="flow") c.innerHTML=renderFlow();
   else if(state.tab==="quotes") c.innerHTML=renderQuotes();
+  else if(state.tab==="service") c.innerHTML=renderService();
   else if(state.tab==="line") c.innerHTML=renderLine();
   else if(state.tab==="analytics") c.innerHTML=renderAnalytics();
   else if(state.tab==="users") c.innerHTML=renderUsers();
@@ -603,7 +617,7 @@ function renderOrders(){
   return `
   <div style="display:flex;gap:10px;margin-bottom:12px;flex-wrap:wrap">
     <input class="inp" style="flex:1;min-width:160px" placeholder="🔍 搜尋工單、客戶…" value="${esc(state.orderSearch)}" oninput="state.orderSearch=this.value;renderContent()">
-    ${currentUserRole!=="sales"?`<button class="accent-btn" onclick="openNewOrderModal()">＋ 新建工單</button>`:""}
+    ${currentUserRole!=="sales"&&currentUserRole!=="floor"?`<button class="accent-btn" onclick="openNewOrderModal()">＋ 新建工單</button>`:""}
   </div>
   <div style="display:flex;gap:8px;overflow-x:auto;padding-bottom:8px;margin-bottom:8px">${chips}</div>
   <div style="display:flex;gap:8px;overflow-x:auto;padding-bottom:8px;margin-bottom:10px">${sChips}</div>
@@ -623,8 +637,8 @@ function renderOrderCard(o,i){
       </div>
       <div style="display:flex;gap:6px">
         <button class="icon-btn" onclick="openViewModal('${o.id}')">👁</button>
-        <button class="icon-btn" style="color:#3B82F6" onclick="openEditOrderModal('${o.id}')">✏️</button>
-        ${o.status!=="延誤"&&o.status!=="完成"?`<button class="icon-btn" style="color:#F59E0B" onclick="markDelay('${o.id}')">⚠</button>`:""}
+        ${currentUserRole!=="floor"?`<button class="icon-btn" style="color:#3B82F6" onclick="openEditOrderModal('${o.id}')">✏️</button>`:""}
+        ${currentUserRole!=="floor"&&o.status!=="延誤"&&o.status!=="完成"?`<button class="icon-btn" style="color:#F59E0B" onclick="markDelay('${o.id}')">⚠</button>`:""}
         ${si<STAGES.length-1?`<button class="adv-btn" onclick="advanceOrder('${o.id}')">▶📱</button>`:""}
       </div>
     </div>
@@ -665,7 +679,7 @@ function renderFlow(){
             <div style="font-size:11px;color:var(--muted)">${esc(o.part)}</div>
             <div style="font-size:10px;color:var(--dim);margin-top:4px">截止：${o.deadline}</div>
             <div style="display:flex;gap:6px;margin-top:8px">
-              <button class="icon-btn" style="flex:1;font-size:11px;justify-content:center;color:#3B82F6" onclick="openEditOrderModal('${o.id}')">✏️ 編輯</button>
+              ${currentUserRole!=="floor"?`<button class="icon-btn" style="flex:1;font-size:11px;justify-content:center;color:#3B82F6" onclick="openEditOrderModal('${o.id}')">✏️ 編輯</button>`:""}
               ${stgIdx(o.stage)<STAGES.length-1?`<button class="adv-btn" style="flex:1;justify-content:center;font-size:11px" onclick="advanceOrder('${o.id}')">▶📱推進</button>`:""}
             </div>
           </div>`).join("")}
@@ -676,7 +690,7 @@ function renderFlow(){
 }
 const PROCS=["雷切","折彎","焊接","研磨","粉塗","液塗","電解拋光","陽極"];
 function renderQuotes(){
-  if(currentUserRole==="operator")return `<div class="card"><div style="padding:20px;text-align:center;color:var(--muted)">現場人員無法查看報價資訊。</div></div>`;
+  if(currentUserRole==="operator"||currentUserRole==="floor")return `<div class="card"><div style="padding:20px;text-align:center;color:var(--muted)">此角色無法查看報價資訊。</div></div>`;
   const f=state.newQuoteForm;
   const est=f.qty&&f.unitPrice?parseInt(f.qty)*parseFloat(f.unitPrice):0;
   return `
@@ -732,8 +746,139 @@ function renderQuotes(){
     </div>
   </div>`).join("")}`;
 }
+// ─── SERVICE REPORTS ─────────────────────────────────────────
+const SVC_TYPES=["產品瑕疵","安裝問題","維修需求","客訴處理","技術諮詢","其他"];
+const SVC_STATUS={"待處理":"#F59E0B","處理中":"#3B82F6","已解決":"#22C55E","已關閉":"#64748B"};
+function renderService(){
+  const reports=state.serviceReports;
+  const canCreate=currentUserRole!=="floor";
+  return `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:8px">
+    <div style="font-size:15px;font-weight:700;font-family:'Syne',sans-serif">🔧 售服回報紀錄</div>
+    ${canCreate?`<button class="accent-btn" onclick="openNewServiceModal()">＋ 新增回報</button>`:""}
+  </div>
+  ${reports.length===0?`<div class="card"><div style="padding:30px;text-align:center;color:var(--muted)">尚無售服回報紀錄</div></div>`:""}
+  ${reports.map((r,i)=>{
+    const sc=SVC_STATUS[r.status]||"#64748B";
+    const d=r.createdTime?.toDate?.();
+    const ds=d?d.toLocaleDateString("zh-TW"):"—";
+    return `<div class="card slide-up" style="border-left:3px solid ${sc};animation-delay:${i*0.04}s">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:8px">
+        <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+          <span class="wo-tag">${r.id}</span>
+          <span class="pill" style="background:${sc}22;color:${sc};font-size:10px">${r.status}</span>
+          <span class="pill" style="background:#1E293B;color:#94A3B8;font-size:10px">${r.type||"其他"}</span>
+        </div>
+        <div style="display:flex;gap:6px">
+          <button class="icon-btn" onclick="openViewServiceModal('${r.id}')">👁</button>
+          ${currentUserRole!=="floor"?`<button class="icon-btn" style="color:#3B82F6" onclick="openEditServiceModal('${r.id}')">✏️</button>`:""}
+          ${currentUserRole!=="floor"?`<button class="icon-btn" style="color:#22C55E" onclick="updateServiceStatus('${r.id}')">✓</button>`:""}
+        </div>
+      </div>
+      <div style="margin-top:10px">
+        <div style="font-size:15px;font-weight:700;font-family:'Syne',sans-serif">${esc(r.customer||"")}</div>
+        <div style="font-size:12px;color:var(--muted);margin-top:2px">${esc(r.orderId||"")} ｜ ${esc(r.part||"")} ｜ ${ds}</div>
+        <div style="font-size:12px;color:var(--text);margin-top:6px">${esc(r.description||"").substring(0,80)}${(r.description||"").length>80?"...":""}</div>
+      </div>
+      ${r.resolution?`<div style="font-size:11px;color:#10B981;margin-top:6px">✅ ${esc(r.resolution).substring(0,60)}</div>`:""}
+    </div>`;
+  }).join("")}`;
+}
+function openNewServiceModal(){
+  $("modal-box").innerHTML=`
+    <div class="modal-head"><div class="modal-title">🔧 新增售服回報</div><button class="close-btn" onclick="closeModal()">✕</button></div>
+    <div class="form-grid">
+      <div><label class="lbl">客戶名稱*</label><input class="inp" id="svc-customer"></div>
+      <div><label class="lbl">關聯工單號</label><select class="inp" id="svc-orderId"><option value="">— 無 —</option>${state.orders.map(o=>`<option value="${o.id}">${o.id} ${o.customer}</option>`).join("")}</select></div>
+    </div>
+    <div class="form-grid">
+      <div><label class="lbl">品名</label><input class="inp" id="svc-part"></div>
+      <div><label class="lbl">回報類型</label><select class="inp" id="svc-type">${SVC_TYPES.map(t=>`<option>${t}</option>`).join("")}</select></div>
+    </div>
+    <div style="margin-bottom:10px"><label class="lbl">問題描述*</label><textarea class="inp" id="svc-desc" rows="3" style="resize:vertical"></textarea></div>
+    <div style="margin-bottom:14px"><label class="lbl">聯絡人 / 電話</label><input class="inp" id="svc-contact"></div>
+    <div style="display:flex;gap:10px">
+      <button class="accent-btn" style="flex:1;padding:11px" onclick="submitNewService()">建立回報</button>
+      <button class="icon-btn" style="flex:1;padding:11px;text-align:center" onclick="closeModal()">取消</button>
+    </div>`;
+  $("modal-wrap").classList.add("show");
+}
+async function submitNewService(){
+  const g=id=>$(id)?.value||"";
+  const customer=g("svc-customer"),desc=g("svc-desc");
+  if(!customer||!desc){showToast("請填客戶名稱和問題描述","error");return;}
+  const sId=`SVC-${String(Date.now()).slice(-6)}`;
+  const data={customer,orderId:g("svc-orderId"),part:g("svc-part"),type:g("svc-type"),description:desc,contact:g("svc-contact"),status:"待處理",resolution:"",createdTime:firebase.firestore.Timestamp.now(),createdBy:currentUser.uid};
+  try{
+    await db.collection("serviceReports").doc(sId).set(data);
+    pushNotif(`售服回報 ${sId} 已建立`,"success");
+    showToast("售服回報已建立");
+    closeModal();
+  }catch(e){console.error("建立售服失敗:",e);showToast("建立失敗","error");}
+}
+function openViewServiceModal(id){
+  const r=state.serviceReports.find(x=>x.id===id);if(!r)return;
+  const d=r.createdTime?.toDate?.();const ds=d?d.toLocaleString("zh-TW"):"—";
+  $("modal-box").innerHTML=`
+    <div class="modal-head"><div class="modal-title">🔧 售服回報 ${r.id}</div><button class="close-btn" onclick="closeModal()">✕</button></div>
+    ${[["回報編號",r.id],["客戶",r.customer],["關聯工單",r.orderId||"—"],["品名",r.part||"—"],["類型",r.type],["狀態",r.status],["建立時間",ds],["聯絡人",r.contact||"—"]].map(([k,v])=>`<div class="detail-row"><span class="detail-key">${k}</span><span class="detail-val">${esc(v)}</span></div>`).join("")}
+    <div style="margin-top:12px"><div class="lbl">問題描述</div><div style="background:#0F172A;border-radius:8px;padding:10px;font-size:13px;color:var(--text);margin-top:4px">${esc(r.description||"—")}</div></div>
+    ${r.resolution?`<div style="margin-top:10px"><div class="lbl">處理結果</div><div style="background:#14532D33;border-radius:8px;padding:10px;font-size:13px;color:#86EFAC;margin-top:4px">${esc(r.resolution)}</div></div>`:""}
+    <button class="icon-btn" style="width:100%;padding:10px;margin-top:14px;text-align:center" onclick="closeModal()">關閉</button>`;
+  $("modal-wrap").classList.add("show");
+}
+function openEditServiceModal(id){
+  const r=state.serviceReports.find(x=>x.id===id);if(!r)return;
+  const statusOpts=["待處理","處理中","已解決","已關閉"];
+  $("modal-box").innerHTML=`
+    <div class="modal-head"><div class="modal-title">✏️ 編輯售服 ${r.id}</div><button class="close-btn" onclick="closeModal()">✕</button></div>
+    <div class="form-grid">
+      <div><label class="lbl">客戶名稱*</label><input class="inp" id="esvc-customer" value="${esc(r.customer)}"></div>
+      <div><label class="lbl">關聯工單號</label><input class="inp" id="esvc-orderId" value="${esc(r.orderId||"")}"></div>
+    </div>
+    <div class="form-grid">
+      <div><label class="lbl">品名</label><input class="inp" id="esvc-part" value="${esc(r.part||"")}"></div>
+      <div><label class="lbl">回報類型</label><select class="inp" id="esvc-type">${SVC_TYPES.map(t=>`<option${r.type===t?" selected":""}>${t}</option>`).join("")}</select></div>
+    </div>
+    <div class="form-grid">
+      <div><label class="lbl">狀態</label><select class="inp" id="esvc-status">${statusOpts.map(s=>`<option${r.status===s?" selected":""}>${s}</option>`).join("")}</select></div>
+      <div><label class="lbl">聯絡人</label><input class="inp" id="esvc-contact" value="${esc(r.contact||"")}"></div>
+    </div>
+    <div style="margin-bottom:10px"><label class="lbl">問題描述*</label><textarea class="inp" id="esvc-desc" rows="3" style="resize:vertical">${esc(r.description||"")}</textarea></div>
+    <div style="margin-bottom:14px"><label class="lbl">處理結果</label><textarea class="inp" id="esvc-resolution" rows="2" style="resize:vertical">${esc(r.resolution||"")}</textarea></div>
+    <div style="display:flex;gap:10px">
+      <button class="accent-btn" style="flex:1;padding:11px" onclick="submitEditService('${r.id}')">💾 儲存</button>
+      <button class="icon-btn" style="flex:1;padding:11px;text-align:center" onclick="closeModal()">取消</button>
+    </div>
+    ${currentUserRole==="admin"?`<button style="background:#7F1D1D;color:#FCA5A5;border:1px solid #991B1B;border-radius:10px;padding:10px;width:100%;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;margin-top:10px" onclick="deleteService('${r.id}')">🗑️ 刪除</button>`:""}`;
+  $("modal-wrap").classList.add("show");
+}
+async function submitEditService(id){
+  const g=fid=>$(fid)?.value||"";
+  const customer=g("esvc-customer"),desc=g("esvc-desc");
+  if(!customer||!desc){showToast("請填必填欄位","error");return;}
+  const updates={customer,orderId:g("esvc-orderId"),part:g("esvc-part"),type:g("esvc-type"),description:desc,contact:g("esvc-contact"),status:g("esvc-status"),resolution:g("esvc-resolution")};
+  try{
+    await db.collection("serviceReports").doc(id).set(updates,{merge:true});
+    pushNotif(`售服 ${id} 已更新`,"success");showToast("已更新");closeModal();
+  }catch(e){console.error("更新售服失敗:",e);showToast("更新失敗","error");}
+}
+async function updateServiceStatus(id){
+  const r=state.serviceReports.find(x=>x.id===id);if(!r)return;
+  const next={"待處理":"處理中","處理中":"已解決","已解決":"已關閉","已關閉":"已關閉"}[r.status]||"處理中";
+  try{
+    await db.collection("serviceReports").doc(id).set({status:next},{merge:true});
+    showToast(`售服 ${id} 狀態更新為「${next}」`);
+  }catch(e){showToast("更新失敗","error");}
+}
+async function deleteService(id){
+  if(!confirm(`確定要刪除售服回報 ${id} 嗎？`))return;
+  try{
+    await db.collection("serviceReports").doc(id).delete();
+    pushNotif(`售服 ${id} 已刪除`,"warn");showToast("已刪除");closeModal();
+  }catch(e){showToast("刪除失敗","error");}
+}
 function renderLine(){
-  if(currentUserRole==="sales"||currentUserRole==="operator")return `<div class="card"><div style="padding:20px;text-align:center;color:var(--muted)">只有主管和管理員可以管理 LINE 通知。</div></div>`;
+  if(currentUserRole==="sales"||currentUserRole==="operator"||currentUserRole==="floor")return `<div class="card"><div style="padding:20px;text-align:center;color:var(--muted)">只有主管和管理員可以管理 LINE 通知。</div></div>`;
   const TYPES=[{id:"stageAdvance",l:"製程推進通知"},{id:"delay",l:"延誤警示"},{id:"quoteReady",l:"報價通知"},{id:"shipping",l:"出貨通知"},{id:"custom",l:"自訂訊息"}];
   const lt=state.lineType, lo=state.orders.find(x=>x.id===state.lineOrderId)||state.orders[0];
   const lq=state.quotes.find(x=>x.id===state.lineQuoteId)||state.quotes[0];
@@ -776,7 +921,7 @@ function renderLine(){
   </div>`;
 }
 function renderAnalytics(){
-  if(currentUserRole==="sales"||currentUserRole==="operator")return `<div class="card"><div style="padding:20px;text-align:center;color:var(--muted)">只有主管和管理員可以查看分析數據。</div></div>`;
+  if(currentUserRole==="sales"||currentUserRole==="operator"||currentUserRole==="floor")return `<div class="card"><div style="padding:20px;text-align:center;color:var(--muted)">只有主管和管理員可以查看分析數據。</div></div>`;
   const orders=state.orders;
   const totalRev=orders.reduce((s,o)=>s+o.amount,0);
   const byInd={},indRev={};
@@ -855,7 +1000,8 @@ function renderUsers(){
             <select style="background:#060C1A;border:1px solid var(--border2);border-radius:6px;padding:4px 8px;color:var(--text);font-size:12px;cursor:pointer" onchange="updateUserRole('${u.uid}',this.value)">
               <option value="admin"${u.role==="admin"?" selected":""}>系統管理員</option>
               <option value="manager"${u.role==="manager"?" selected":""}>主管</option>
-              <option value="operator"${u.role==="operator"?" selected":""}>現場人員</option>
+              <option value="operator"${u.role==="operator"?" selected":""}>操作員</option>
+              <option value="floor"${u.role==="floor"?" selected":""}>現場人員</option>
               <option value="sales"${u.role==="sales"?" selected":""}>業務</option>
             </select>
           </td>
@@ -1059,7 +1205,7 @@ function openViewModal(id){
     </div>
     ${[["工單號",o.id],["客戶",o.customer],["品名",o.part],["數量",`${o.qty} 件`],["材質",o.material],["產業",o.industry],["截止日期",o.deadline],["金額",o.amount>0?`NT$ ${o.amount.toLocaleString()}`:"未定"],["狀態",o.status],["優先",o.priority],["備註",o.note||"—"]].map(([k,v])=>`<div class="detail-row"><span class="detail-key">${k}</span><span class="detail-val">${esc(v)}</span></div>`).join("")}
     <div style="display:flex;gap:10px;margin-top:14px">
-      <button style="background:#3B82F6;color:#fff;border:none;border-radius:10px;padding:11px;flex:1;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit" onclick="closeModal();openEditOrderModal('${o.id}')">✏️ 編輯工單</button>
+      ${currentUserRole!=="floor"?`<button style="background:#3B82F6;color:#fff;border:none;border-radius:10px;padding:11px;flex:1;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit" onclick="closeModal();openEditOrderModal('${o.id}')">✏️ 編輯工單</button>`:""}
       <button style="background:#06C755;color:#fff;border:none;border-radius:10px;padding:11px;flex:1;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit" onclick="sendCurrentOrderLine('${o.id}');closeModal()">📱 通知客戶</button>
     </div>
     <button class="icon-btn" style="width:100%;padding:10px;margin-top:8px;text-align:center" onclick="closeModal()">關閉</button>`;
