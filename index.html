@@ -1,0 +1,822 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="MetalFlow">
+<meta name="theme-color" content="#060C1A">
+<title>MetalFlow PRO</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+:root{
+  --bg:#060C1A;--surface:#0A1020;--border:#111827;--border2:#1E293B;
+  --text:#E2E8F0;--muted:#64748B;--dim:#334155;
+  --blue:#3B82F6;--purple:#8B5CF6;--green:#10B981;--yellow:#F59E0B;--red:#EF4444;
+  --line:#06C755;
+  font-size:14px;
+}
+body{background:var(--bg);color:var(--text);font-family:'DM Sans','Noto Sans TC',sans-serif;height:100dvh;overflow:hidden;display:flex;flex-direction:column}
+::-webkit-scrollbar{width:3px;height:3px}
+::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px}
+/* TOPBAR */
+#topbar{display:flex;align-items:center;gap:10px;padding:12px 14px;background:var(--surface);border-bottom:1px solid var(--border);flex-shrink:0;padding-top:max(12px,env(safe-area-inset-top))}
+#ham-btn{font-size:20px;background:none;border:none;color:var(--muted);cursor:pointer;padding:4px 6px}
+#top-title{flex:1;font-family:'Syne',sans-serif;font-size:15px;font-weight:800;color:var(--text)}
+#notif-btn{background:none;border:none;font-size:18px;cursor:pointer;position:relative;padding:4px}
+.top-badge{position:absolute;top:-2px;right:-2px;background:var(--red);color:#fff;border-radius:50%;font-size:9px;width:14px;height:14px;display:flex;align-items:center;justify-content:center;font-weight:800}
+/* SIDEBAR */
+#sidebar{position:fixed;left:0;top:0;bottom:0;width:250px;background:var(--surface);border-right:1px solid var(--border);z-index:1000;display:flex;flex-direction:column;transform:translateX(-100%);transition:transform .28s cubic-bezier(.4,0,.2,1)}
+#sidebar.open{transform:translateX(0)}
+.side-logo{padding:max(22px,calc(env(safe-area-inset-top)+14px)) 18px 14px;display:flex;gap:12px;align-items:center}
+.logo-mark{font-size:30px;color:var(--blue)}
+.logo-name{font-family:'Syne',sans-serif;font-size:18px;font-weight:800;letter-spacing:-.5px}
+.logo-sub{font-size:10px;color:var(--dim);margin-top:2px;letter-spacing:.5px}
+.side-nav{flex:1;padding:6px 12px;overflow-y:auto}
+.nav-item{display:flex;align-items:center;gap:10px;width:100%;padding:11px 12px;border-radius:10px;border:none;background:transparent;color:var(--muted);font-size:13px;font-weight:500;cursor:pointer;transition:all .18s;margin-bottom:2px;text-align:left;font-family:inherit;position:relative}
+.nav-item.active{background:#0F2344;color:#60A5FA;font-weight:700}
+.nav-ico{font-size:16px;width:20px;text-align:center}
+.nav-badge{margin-left:auto;background:var(--red);color:#fff;border-radius:10px;padding:1px 7px;font-size:10px;font-weight:800}
+.side-footer{padding:14px 18px;border-top:1px solid var(--border)}
+.user-row{display:flex;gap:10px;align-items:center;margin-bottom:8px}
+.ava{width:34px;height:34px;border-radius:50%;background:linear-gradient(135deg,var(--blue),var(--purple));display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:800;color:#fff;flex-shrink:0}
+.line-status{display:flex;gap:6px;align-items:center}
+.green-dot{width:6px;height:6px;border-radius:50%;background:var(--line);animation:pulse 2s infinite}
+/* SCRIM */
+#scrim{position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:999;display:none}
+#scrim.show{display:block}
+/* CONTENT */
+#content{flex:1;overflow-y:auto;padding:14px 12px 80px}
+/* BOTTOM NAV */
+#bottom-nav{display:flex;background:var(--surface);border-top:1px solid var(--border);flex-shrink:0;padding-bottom:env(safe-area-inset-bottom,4px)}
+.bot-btn{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;padding:9px 4px 7px;border:none;background:transparent;color:var(--dim);cursor:pointer;font-family:inherit;font-size:9px;position:relative}
+.bot-btn.active{color:#60A5FA}
+.bot-ico{font-size:18px}
+.bot-dot{position:absolute;top:6px;right:calc(50% - 14px);width:6px;height:6px;border-radius:50%;background:var(--line)}
+/* CARDS */
+.card{background:var(--surface);border-radius:14px;padding:16px;margin-bottom:12px;border:1px solid var(--border)}
+.card-title{font-size:12px;font-weight:700;color:#94A3B8;text-transform:uppercase;letter-spacing:.7px;margin-bottom:12px;font-family:'Syne',sans-serif}
+/* KPI GRID */
+.kpi-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:12px}
+.kpi-card{background:var(--surface);border-radius:14px;padding:14px;cursor:pointer;border:1px solid var(--border)}
+.kpi-label{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.8px;margin-bottom:6px;font-family:'Syne',sans-serif}
+.kpi-val{font-size:26px;font-weight:800;font-family:'Syne',sans-serif;line-height:1}
+.kpi-sub{font-size:11px;color:var(--dim);margin-top:5px}
+/* TAGS & PILLS */
+.wo-tag{background:#0F2344;color:#60A5FA;border-radius:6px;padding:2px 8px;font-size:11px;font-weight:700;font-family:monospace}
+.pill{border-radius:20px;padding:2px 9px;font-size:11px;font-weight:700;display:inline-block}
+/* PROGRESS BAR */
+.bar-bg{background:#0F172A;border-radius:4px;height:6px;overflow:hidden}
+.bar-fill{height:6px;border-radius:4px;transition:width .6s}
+/* BUTTONS */
+.accent-btn{background:linear-gradient(135deg,#2563EB,#7C3AED);color:#fff;border:none;border-radius:10px;padding:9px 16px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit}
+.icon-btn{background:var(--border2);border:1px solid var(--dim);border-radius:8px;padding:7px 10px;color:#94A3B8;cursor:pointer;font-size:13px;font-family:inherit}
+.adv-btn{background:#172554;border:none;border-radius:8px;padding:6px 10px;color:#60A5FA;cursor:pointer;font-size:12px;font-weight:600;font-family:inherit;white-space:nowrap}
+.link-btn{background:none;border:none;color:var(--blue);font-size:12px;cursor:pointer;padding:0;font-family:inherit}
+.chip{background:var(--border2);border:1px solid var(--dim);border-radius:20px;padding:5px 12px;color:var(--muted);font-size:12px;cursor:pointer;white-space:nowrap;flex-shrink:0;font-family:inherit}
+.chip.on{background:#0F2344;border-color:var(--blue);color:#60A5FA}
+/* FORM */
+.form-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:10px}
+.form-field{margin-bottom:10px}
+label.lbl{display:block;font-size:11px;color:var(--muted);margin-bottom:5px;font-weight:700;letter-spacing:.4px}
+input.inp,select.inp,textarea.inp{width:100%;background:#060C1A;border:1px solid var(--border2);border-radius:8px;padding:10px 12px;color:var(--text);font-size:13px;outline:none;font-family:inherit}
+/* MODAL */
+#modal-wrap{position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:2000;display:none;align-items:flex-end;justify-content:center}
+#modal-wrap.show{display:flex}
+#modal-box{background:var(--surface);border-radius:20px 20px 0 0;padding:20px 16px 32px;width:100%;max-width:600px;max-height:90dvh;overflow-y:auto;border:1px solid var(--border)}
+.modal-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px}
+.modal-title{font-family:'Syne',sans-serif;font-size:16px;font-weight:800;color:var(--text)}
+.close-btn{background:var(--border2);border:none;border-radius:50%;width:28px;height:28px;color:var(--muted);font-size:15px;cursor:pointer}
+/* TOAST */
+#toast{position:fixed;bottom:84px;left:50%;transform:translateX(-50%);border-radius:12px;padding:11px 22px;color:#fff;font-weight:700;font-size:13px;z-index:9999;box-shadow:0 4px 24px rgba(0,0,0,.5);white-space:nowrap;display:none;font-family:'DM Sans',sans-serif}
+/* TABLE */
+.data-table{width:100%;border-collapse:collapse;font-size:12px}
+.data-table th{padding:8px 6px;text-align:left;color:var(--muted);font-weight:600;white-space:nowrap;border-bottom:1px solid var(--border2)}
+.data-table td{padding:10px 6px;border-bottom:1px solid var(--border)}
+/* ROW */
+.row-item{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border)}
+.line-ava{width:32px;height:32px;border-radius:50%;background:var(--line);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:800;color:#fff;flex-shrink:0}
+/* CHART BAR */
+.chart-bar-wrap{margin-bottom:12px}
+.chart-bar-bg{background:#0F172A;border-radius:4px;height:10px;overflow:hidden;margin-top:4px}
+.chart-bar-fill{height:10px;border-radius:4px;transition:width 1s cubic-bezier(.4,0,.2,1)}
+/* KANBAN */
+.kanban-wrap{display:flex;gap:10px;overflow-x:auto;padding-bottom:16px;min-height:360px}
+.kanban-col{min-width:178px;max-width:195px;flex-shrink:0;background:var(--surface);border-radius:14px;overflow:hidden;border:1px solid var(--border);transition:border-color .2s}
+.kanban-col.drag-over{border-color:var(--green)}
+.kanban-head{padding:10px 12px;display:flex;gap:8px;align-items:center;font-weight:700;font-size:12px;font-family:'Syne',sans-serif}
+.kanban-cnt{margin-left:auto;border-radius:10px;padding:1px 7px;font-size:11px;font-weight:700;color:#fff}
+.kanban-body{padding:8px;min-height:60px}
+.kanban-card{background:var(--border2);border-radius:10px;padding:10px;margin-bottom:8px;cursor:grab;border:1px solid var(--dim)}
+/* ANIMATE */
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+@keyframes slideUp{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:translateY(0)}}
+@keyframes popIn{from{opacity:0;transform:scale(.92) translateY(8px)}to{opacity:1;transform:scale(1) translateY(0)}}
+.slide-up{animation:slideUp .22s ease both}
+.pop-in{animation:popIn .3s cubic-bezier(.34,1.56,.64,1) both}
+/* LINE PREVIEW */
+.line-preview{background:#1A2A1A;border-radius:10px;padding:12px;font-size:12px;color:#D1FAE5;line-height:1.8;white-space:pre-wrap;font-family:monospace;max-height:180px;overflow-y:auto}
+.detail-row{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border)}
+.detail-key{font-size:12px;color:var(--muted)}
+.detail-val{font-size:13px;color:var(--text);font-weight:500;text-align:right;max-width:60%}
+/* PIPE */
+.pipe-wrap{display:flex;gap:6px;overflow-x:auto;padding-bottom:6px}
+.pipe-node{flex-shrink:0;display:flex;flex-direction:column;align-items:center;gap:4px}
+.pipe-dot{width:34px;height:34px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;color:#fff;transition:all .3s}
+.pipe-lbl{font-size:8px;color:var(--muted);text-align:center;width:38px;line-height:1.2}
+/* BOTTLENECK CHART */
+.bn-wrap{display:flex;gap:5px;align-items:flex-end;height:90px;overflow-x:auto;padding-bottom:2px}
+.bn-col{flex-shrink:0;width:42px;display:flex;flex-direction:column;align-items:center;gap:3px}
+.bn-cnt{font-size:11px;font-weight:700}
+.bn-bar{width:34px;border-radius:4px 4px 0 0;transition:height .7s}
+.bn-lbl{font-size:8px;color:var(--muted);text-align:center;width:44px;line-height:1.2}
+</style>
+</head>
+<body>
+<!-- SIDEBAR -->
+<div id="sidebar">
+  <div class="side-logo">
+    <div class="logo-mark">⬡</div>
+    <div>
+      <div class="logo-name">MetalFlow</div>
+      <div class="logo-sub">PRO · 板金製程管理</div>
+    </div>
+  </div>
+  <nav class="side-nav" id="side-nav"></nav>
+  <div class="side-footer">
+    <div class="user-row">
+      <div class="ava">A</div>
+      <div><div style="font-size:13px;font-weight:700">Alvin Wei</div><div style="font-size:11px;color:var(--muted)">廠長 · 系統管理員</div></div>
+    </div>
+    <div class="line-status"><span class="green-dot"></span><span style="font-size:11px;color:var(--line)">LINE Bot 連線中</span></div>
+  </div>
+</div>
+<div id="scrim"></div>
+<!-- TOPBAR -->
+<div id="topbar">
+  <button id="ham-btn">☰</button>
+  <div id="top-title">◈ 儀表板</div>
+  <div style="display:flex;gap:8px;align-items:center">
+    <div style="font-size:11px;color:var(--muted)" id="top-date"></div>
+    <button id="notif-btn">🔔<span class="top-badge" id="notif-badge" style="display:none">0</span></button>
+  </div>
+</div>
+<!-- CONTENT -->
+<div id="content"></div>
+<!-- BOTTOM NAV -->
+<nav id="bottom-nav"></nav>
+<!-- MODAL -->
+<div id="modal-wrap"><div id="modal-box"></div></div>
+<!-- TOAST -->
+<div id="toast"></div>
+<script>
+// ─── DATA ────────────────────────────────────────────────────
+const STAGES=[
+  {id:"inquiry",label:"詢價",icon:"📋",color:"#64748B"},
+  {id:"quote",label:"報價",icon:"💰",color:"#8B5CF6"},
+  {id:"order",label:"確認下單",icon:"✅",color:"#10B981"},
+  {id:"material",label:"備料",icon:"🔩",color:"#F59E0B"},
+  {id:"cutting",label:"雷射切割",icon:"⚡",color:"#EF4444"},
+  {id:"bending",label:"折彎",icon:"🔧",color:"#EC4899"},
+  {id:"welding",label:"焊接",icon:"🔥",color:"#F97316"},
+  {id:"grinding",label:"研磨",icon:"⚙️",color:"#94A3B8"},
+  {id:"coating",label:"塗裝",icon:"🎨",color:"#14B8A6"},
+  {id:"qc",label:"品檢",icon:"🔍",color:"#6366F1"},
+  {id:"shipping",label:"出貨",icon:"🚚",color:"#22C55E"},
+];
+const STAGE_IDS=STAGES.map(s=>s.id);
+const STATUS_COLOR={"待處理":"#F59E0B","進行中":"#3B82F6","完成":"#22C55E","延誤":"#EF4444"};
+const TABS=[
+  {id:"dashboard",label:"儀表板",icon:"◈"},
+  {id:"orders",label:"工單",icon:"⊞"},
+  {id:"flow",label:"看板",icon:"⟳"},
+  {id:"quotes",label:"報價",icon:"¥"},
+  {id:"line",label:"LINE",icon:"◉"},
+  {id:"analytics",label:"分析",icon:"◎"},
+  {id:"notif",label:"通知",icon:"◆"},
+];
+let state={
+  tab:"dashboard",
+  orders:[
+    {id:"WO-2401",customer:"台積電設備部",industry:"半導體設備",part:"控制箱外殼",qty:5,material:"SUS304 1.5mm",stage:"coating",status:"進行中",deadline:"2026-04-18",amount:45000,priority:"高",note:"需電解拋光後塗裝"},
+    {id:"WO-2402",customer:"新日興機械",industry:"機械設備",part:"機台防護罩",qty:12,material:"SPCC 2.0mm",stage:"bending",status:"進行中",deadline:"2026-04-15",amount:28000,priority:"中",note:""},
+    {id:"WO-2403",customer:"廣達自動化",industry:"自動化設備",part:"料架側板組",qty:30,material:"SECC 1.2mm",stage:"cutting",status:"進行中",deadline:"2026-04-20",amount:62000,priority:"高",note:"白色粉塗 RAL9003"},
+    {id:"WO-2404",customer:"中興電工",industry:"重電",part:"配電盤箱體",qty:8,material:"SPCC 2.0mm",stage:"welding",status:"延誤",deadline:"2026-04-13",amount:38500,priority:"高",note:"焊接變形需矯正"},
+    {id:"WO-2405",customer:"宏正機械",industry:"機械設備",part:"齒輪箱外蓋",qty:20,material:"SUS304 2.0mm",stage:"shipping",status:"完成",deadline:"2026-04-10",amount:55000,priority:"低",note:""},
+    {id:"WO-2406",customer:"聯發科廠務",industry:"半導體設備",part:"潔淨室門板",qty:4,material:"SUS316L 2.0mm",stage:"inquiry",status:"待處理",deadline:"2026-04-25",amount:0,priority:"中",note:"需電解拋光"},
+    {id:"WO-2407",customer:"台達電子",industry:"自動化設備",part:"散熱背板",qty:50,material:"AL 2.0mm",stage:"qc",status:"進行中",deadline:"2026-04-22",amount:72000,priority:"中",note:"陽極處理"},
+    {id:"WO-2408",customer:"研華科技",industry:"機械設備",part:"工控箱體",qty:10,material:"SECC 1.2mm",stage:"order",status:"進行中",deadline:"2026-04-28",amount:45000,priority:"低",note:""},
+  ],
+  quotes:[
+    {id:"QT-0831",customer:"友達光電",industry:"半導體設備",part:"框架支撐板",qty:50,material:"SPCC 1.5mm",process:["雷切","折彎","粉塗"],unitPrice:1200,total:60000,status:"待確認",created:"2026-04-08",validDays:30},
+    {id:"QT-0832",customer:"研華科技",industry:"機械設備",part:"工控箱體",qty:10,material:"SECC 1.2mm",process:["雷切","折彎","焊接","粉塗"],unitPrice:4500,total:45000,status:"已接單",created:"2026-04-09",validDays:30},
+    {id:"QT-0833",customer:"德律科技",industry:"自動化設備",part:"測試治具板",qty:100,material:"SUS304 1.0mm",process:["雷切","折彎"],unitPrice:380,total:38000,status:"報價中",created:"2026-04-10",validDays:30},
+    {id:"QT-0834",customer:"台達電子",industry:"自動化設備",part:"散熱背板",qty:50,material:"AL 2.0mm",process:["雷切","折彎","陽極"],unitPrice:1440,total:72000,status:"已接單",created:"2026-04-07",validDays:30},
+  ],
+  lineLog:[],
+  notifications:[],
+  unread:0,
+  orderSearch:"",orderStageFilter:"all",orderPriorityFilter:"all",
+  quoteFormOpen:false,
+  lineType:"stageAdvance",lineOrderId:"",lineQuoteId:"",lineCustomMsg:"",lineCustomTo:"",
+  newOrderForm:{customer:"",part:"",qty:"",material:"",stage:"inquiry",priority:"中",deadline:"",amount:"",note:"",industry:"機械設備"},
+  newQuoteForm:{customer:"",industry:"機械設備",part:"",qty:"",material:"",process:[],unitPrice:"",validDays:"30",note:""},
+  orderWoCount:2409,quoteCount:835,
+  dragId:null,
+};
+// ─── HELPERS ─────────────────────────────────────────────────
+const $=id=>document.getElementById(id);
+const stg=id=>STAGES.find(s=>s.id===id);
+const stgIdx=id=>STAGE_IDS.indexOf(id);
+const daysLeft=deadline=>Math.ceil((new Date(deadline)-new Date())/86400000);
+const esc=s=>(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+function showToast(msg,type="success"){
+  const t=$("toast");
+  t.textContent=(type==="line"?"💬 ":type==="error"?"⚠ ":"✓ ")+msg;
+  t.style.background=type==="line"?"#06C755":type==="error"?"#EF4444":"#10B981";
+  t.style.display="block";
+  t.classList.remove("pop-in"); void t.offsetWidth; t.classList.add("pop-in");
+  clearTimeout(t._timer);
+  t._timer=setTimeout(()=>{t.style.display="none"},3000);
+}
+function pushNotif(msg,type="info"){
+  state.notifications.unshift({id:Date.now(),msg,type,time:new Date().toLocaleTimeString("zh-TW",{hour:"2-digit",minute:"2-digit"})});
+  state.unread++;
+  updateBadges();
+}
+function sendLine(msg,toName,refId=""){
+  state.lineLog.unshift({id:Date.now(),to:toName,msg,time:new Date().toLocaleTimeString("zh-TW",{hour:"2-digit",minute:"2-digit"}),status:"已送出"});
+  showToast(`LINE 通知已送出給 ${toName}`,"line");
+}
+function updateBadges(){
+  const b=$("notif-badge");
+  if(state.unread>0){b.textContent=state.unread;b.style.display="flex";}
+  else b.style.display="none";
+}
+// ─── LINE TEMPLATES ──────────────────────────────────────────
+const LT={
+  stageAdvance(o,ns){
+    const ol=stg(o.stage)?.label||o.stage, nl=stg(ns)?.label||ns;
+    const oi=stg(o.stage)?.icon||"🔹", ni=stg(ns)?.icon||"🔹";
+    return `🏭【MetalFlow 製程通知】\n━━━━━━━━━━━━━━\n📦 工單：${o.id}\n👤 客戶：${o.customer}\n🔧 品名：${o.part} ×${o.qty}\n\n✅ 製程更新\n${oi} ${ol}　→　${ni} ${nl}\n\n📅 截止日：${o.deadline}\n━━━━━━━━━━━━━━\n如有問題請回覆此訊息`;
+  },
+  delay(o){return `⚠️【MetalFlow 延誤警示】\n━━━━━━━━━━━━━━\n📦 工單：${o.id}\n👤 客戶：${o.customer}\n🔧 品名：${o.part}\n\n🚨 此工單目前已標記【延誤】\n📅 原訂截止：${o.deadline}\n\n請與業務確認新的交期\n━━━━━━━━━━━━━━`;},
+  quoteReady(q){const p=(q.process||[]).join(" · ")||"—";return `💰【MetalFlow 報價通知】\n━━━━━━━━━━━━━━\n📋 報價單：${q.id}\n👤 客戶：${q.customer}\n🔧 品名：${q.part} ×${q.qty}\n🔩 製程：${p}\n\n💵 報價金額：NT$ ${(+q.total).toLocaleString()}\n📅 有效期限：${q.validDays} 天\n\n回覆「確認 ${q.id}」即完成下單\n━━━━━━━━━━━━━━`;},
+  shipping(o){return `🚚【MetalFlow 出貨通知】\n━━━━━━━━━━━━━━\n📦 工單：${o.id}\n👤 客戶：${o.customer}\n🔧 品名：${o.part} ×${o.qty}\n\n✅ 已完成品檢，準備出貨\n📅 出貨日期：${new Date().toLocaleDateString("zh-TW")}\n\n請確認收貨地址與聯絡人\n━━━━━━━━━━━━━━`;}
+};
+function advanceOrder(id){
+  const o=state.orders.find(x=>x.id===id); if(!o)return;
+  const si=stgIdx(o.stage); if(si>=STAGES.length-1)return;
+  const ns=STAGE_IDS[si+1];
+  const isShip=ns==="shipping";
+  const msg=isShip?LT.shipping(o):LT.stageAdvance(o,ns);
+  sendLine(msg,o.customer,id);
+  pushNotif(`${id} 推進至「${stg(ns)?.label}」`,"advance");
+  o.stage=ns; o.status=isShip?"完成":"進行中";
+  render();
+}
+function markDelay(id){
+  const o=state.orders.find(x=>x.id===id); if(!o)return;
+  o.status="延誤";
+  sendLine(LT.delay(o),o.customer,id);
+  pushNotif(`${id} 已標記延誤`,"warn");
+  showToast("已標記延誤並通知客戶");
+  render();
+}
+// ─── RENDER SYSTEM ───────────────────────────────────────────
+function setTab(id){
+  state.tab=id;
+  if(id==="notif")state.unread=0;
+  updateBadges();
+  render();
+  $("sidebar").classList.remove("open");
+  $("scrim").classList.remove("show");
+}
+function render(){
+  const t=TABS.find(x=>x.id===state.tab);
+  $("top-title").textContent=`${t.icon} ${t.label}`;
+  $("top-date").textContent=new Date().toLocaleDateString("zh-TW",{month:"short",day:"numeric",weekday:"short"});
+  renderSideNav(); renderBottomNav();
+  const c=$("content"); c.innerHTML="";
+  if(state.tab==="dashboard") c.innerHTML=renderDashboard();
+  else if(state.tab==="orders") c.innerHTML=renderOrders();
+  else if(state.tab==="flow") c.innerHTML=renderFlow();
+  else if(state.tab==="quotes") c.innerHTML=renderQuotes();
+  else if(state.tab==="line") c.innerHTML=renderLine();
+  else if(state.tab==="analytics") c.innerHTML=renderAnalytics();
+  else if(state.tab==="notif") c.innerHTML=renderNotif();
+  bindEvents();
+}
+function renderSideNav(){
+  $("side-nav").innerHTML=TABS.map(t=>`
+    <button class="nav-item${state.tab===t.id?" active":""}" onclick="setTab('${t.id}')">
+      <span class="nav-ico">${t.icon}</span><span>${t.label}</span>
+      ${t.id==="notif"&&state.unread>0?`<span class="nav-badge">${state.unread}</span>`:""}
+    </button>`).join("");
+}
+function renderBottomNav(){
+  $("bottom-nav").innerHTML=TABS.slice(0,6).map(t=>`
+    <button class="bot-btn${state.tab===t.id?" active":""}" onclick="setTab('${t.id}')">
+      <span class="bot-ico">${t.icon}${t.id==="line"&&state.lineLog.length>0?'<span class="bot-dot"></span>':""}</span>
+      <span>${t.label}</span>
+    </button>`).join("");
+}
+function renderDashboard(){
+  const active=state.orders.filter(o=>o.status==="進行中").length;
+  const delayed=state.orders.filter(o=>o.status==="延誤").length;
+  const revenue=state.orders.filter(o=>o.status==="完成").reduce((s,o)=>s+o.amount,0);
+  const pending=state.quotes.filter(q=>q.status==="待確認").length;
+  const sc={};STAGES.forEach(s=>{sc[s.id]=state.orders.filter(o=>o.stage===s.id).length;});
+  const urgent=state.orders.filter(o=>o.priority==="高"&&o.status!=="完成").slice(0,4);
+  const kpis=[
+    {label:"進行中工單",val:active,sub:`${delayed}件延誤`,color:"#3B82F6",tab:"orders"},
+    {label:"待確認報價",val:pending,sub:"點擊處理",color:"#8B5CF6",tab:"quotes"},
+    {label:"LINE已送出",val:state.lineLog.length,sub:"本系統累計",color:"#06C755",tab:"line"},
+    {label:"完成金額",val:`$${Math.round(revenue/1000)}K`,sub:"NT$",color:"#F59E0B",tab:"analytics"},
+  ];
+  return `
+  <div class="kpi-grid">${kpis.map((k,i)=>`
+    <div class="kpi-card slide-up" style="border-top:3px solid ${k.color};animation-delay:${i*0.06}s" onclick="setTab('${k.tab}')">
+      <div class="kpi-label">${k.label}</div>
+      <div class="kpi-val" style="color:${k.color}">${k.val}</div>
+      <div class="kpi-sub">${k.sub}</div>
+    </div>`).join("")}</div>
+  <div class="card slide-up" style="animation-delay:.1s">
+    <div class="card-title">製程站點即時概況</div>
+    <div class="pipe-wrap">${STAGES.map(s=>`
+      <div class="pipe-node">
+        <div class="pipe-dot" style="background:${sc[s.id]>0?s.color:"#1E293B"}">${sc[s.id]||0}</div>
+        <div class="pipe-lbl">${s.label}</div>
+      </div>`).join("")}</div>
+  </div>
+  <div class="card slide-up" style="animation-delay:.15s">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <div class="card-title" style="margin:0">🚨 緊急工單</div>
+      <button class="link-btn" onclick="setTab('orders')">全部 →</button>
+    </div>
+    ${urgent.map(o=>{
+      const d=daysLeft(o.deadline), s=stg(o.stage);
+      return `<div class="row-item">
+        <div style="flex:1;min-width:0">
+          <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+            <span class="wo-tag">${o.id}</span>
+            <span style="font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(o.customer)}</span>
+          </div>
+          <div style="font-size:11px;color:var(--muted);margin-top:3px">${s?.icon} ${s?.label} · ${esc(o.part)}</div>
+        </div>
+        <div style="display:flex;gap:6px;align-items:center;flex-shrink:0">
+          <span class="pill" style="background:${d<0?"#7F1D1D":d<3?"#78350F":"#14532D"};color:${d<0?"#FCA5A5":d<3?"#FDE68A":"#86EFAC"};font-size:11px">${d<0?`逾期${-d}天`:`剩${d}天`}</span>
+          <button class="adv-btn" onclick="advanceOrder('${o.id}')">▶ +📱</button>
+        </div>
+      </div>`;
+    }).join("")}
+  </div>
+  <div class="card slide-up" style="animation-delay:.2s">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <div class="card-title" style="margin:0">💬 最近LINE通知</div>
+      <button class="link-btn" onclick="setTab('line')">查看全部 →</button>
+    </div>
+    ${state.lineLog.slice(0,3).map(l=>`
+      <div class="row-item">
+        <div class="line-ava">${l.to.slice(0,1)}</div>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:13px;font-weight:600">${esc(l.to)}</div>
+          <div style="font-size:11px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(l.msg.split("\n")[0])}</div>
+        </div>
+        <div style="font-size:11px;color:#22C55E;flex-shrink:0">${l.time}</div>
+      </div>`).join("")}
+    ${state.lineLog.length===0?'<div style="color:var(--dim);text-align:center;padding:12px 0;font-size:13px">尚無LINE通知記錄</div>':""}
+  </div>`;
+}
+function renderOrders(){
+  const filtered=state.orders.filter(o=>{
+    const q=state.orderSearch;
+    const mq=!q||o.customer.includes(q)||o.id.includes(q)||o.part.includes(q);
+    const ms=state.orderStageFilter==="all"||o.stage===state.orderStageFilter;
+    const mp=state.orderPriorityFilter==="all"||o.priority===state.orderPriorityFilter;
+    return mq&&ms&&mp;
+  });
+  const chips=["all","高","中","低"].map(p=>`<button class="chip${state.orderPriorityFilter===p?" on":""}" onclick="setPFilter('${p}')">${p==="all"?"全優先":"${p}優先".replace("${p}",p)}</button>`).join("");
+  const sChips=[{id:"all",label:"全部站點"},...STAGES.filter(s=>state.orders.some(o=>o.stage===s.id)).map(s=>({id:s.id,label:`${s.icon}${s.label}(${state.orders.filter(o=>o.stage===s.id).length})`}))].map(s=>`<button class="chip${state.orderStageFilter===s.id?" on":""}" onclick="setSFilter('${s.id}')">${s.label}</button>`).join("");
+  return `
+  <div style="display:flex;gap:10px;margin-bottom:12px;flex-wrap:wrap">
+    <input class="inp" style="flex:1;min-width:160px" placeholder="🔍 搜尋工單、客戶…" value="${esc(state.orderSearch)}" oninput="state.orderSearch=this.value;renderContent()">
+    <button class="accent-btn" onclick="openNewOrderModal()">＋ 新建工單</button>
+  </div>
+  <div style="display:flex;gap:8px;overflow-x:auto;padding-bottom:8px;margin-bottom:8px">${chips}</div>
+  <div style="display:flex;gap:8px;overflow-x:auto;padding-bottom:8px;margin-bottom:10px">${sChips}</div>
+  ${filtered.map((o,i)=>renderOrderCard(o,i)).join("")}
+  ${filtered.length===0?'<div style="color:var(--muted);text-align:center;padding:40px 0">無符合工單</div>':""}`;
+}
+function renderOrderCard(o,i){
+  const si=stgIdx(o.stage), s=stg(o.stage), pct=Math.round(si/(STAGES.length-1)*100), d=daysLeft(o.deadline);
+  const pc=o.priority==="高"?"#7F1D1D":o.priority==="中"?"#451A03":"#1C1917";
+  const ptc=o.priority==="高"?"#FCA5A5":o.priority==="中"?"#FDE68A":"#A8A29E";
+  return `<div class="card slide-up" style="border-left:3px solid ${s.color};animation-delay:${i*0.04}s">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:8px">
+      <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+        <span class="wo-tag">${o.id}</span>
+        <span class="pill" style="background:${pc};color:${ptc};font-size:10px">${o.priority}優先</span>
+        <span class="pill" style="background:${STATUS_COLOR[o.status]}22;color:${STATUS_COLOR[o.status]};font-size:10px">${o.status}</span>
+      </div>
+      <div style="display:flex;gap:6px">
+        <button class="icon-btn" onclick="openViewModal('${o.id}')">👁</button>
+        ${o.status!=="延誤"&&o.status!=="完成"?`<button class="icon-btn" style="color:#F59E0B" onclick="markDelay('${o.id}')">⚠</button>`:""}
+        ${si<STAGES.length-1?`<button class="adv-btn" onclick="advanceOrder('${o.id}')">▶📱</button>`:""}
+      </div>
+    </div>
+    <div style="margin-top:10px">
+      <div style="font-size:15px;font-weight:700;font-family:'Syne',sans-serif">${esc(o.customer)}</div>
+      <div style="font-size:12px;color:var(--muted);margin-top:2px">${esc(o.part)} × ${o.qty} ｜ ${esc(o.material)} ｜ ${o.industry}</div>
+      ${o.note?`<div style="font-size:11px;color:#F59E0B;margin-top:4px">📌 ${esc(o.note)}</div>`:""}
+    </div>
+    <div style="margin-top:12px">
+      <div style="display:flex;justify-content:space-between;margin-bottom:5px">
+        <span style="font-size:12px;color:${s.color};font-weight:600">${s.icon} ${s.label}</span>
+        <span style="font-size:11px;color:${d<0?"#EF4444":d<3?"#F59E0B":"#475569"}">截止：${o.deadline}${d<0?` (逾期${-d}天)`:d<3?` (剩${d}天)`:""}</span>
+      </div>
+      <div class="bar-bg"><div class="bar-fill" style="width:${pct}%;background:linear-gradient(90deg,#3B82F6,${s.color})"></div></div>
+      <div style="font-size:10px;color:var(--dim);margin-top:3px">${pct}% 完成</div>
+    </div>
+    ${o.amount>0?`<div style="font-size:12px;color:#10B981;margin-top:8px">💵 NT$ ${o.amount.toLocaleString()}</div>`:""}
+  </div>`;
+}
+function renderFlow(){
+  return `<div class="card"><div class="card-title">🏭 製程看板</div><div style="font-size:12px;color:var(--muted)">電腦可拖曳 · 手機點 ▶📱 推進</div></div>
+  <div class="kanban-wrap">${STAGES.map(s=>{
+    const cols=state.orders.filter(o=>o.stage===s.id);
+    return `<div class="kanban-col" id="kcol-${s.id}" ondragover="event.preventDefault();this.classList.add('drag-over')" ondragleave="this.classList.remove('drag-over')" ondrop="onDrop('${s.id}');this.classList.remove('drag-over')">
+      <div class="kanban-head" style="border-bottom:2px solid ${s.color}">
+        <span>${s.icon}</span><span style="color:${s.color}">${s.label}</span>
+        <span class="kanban-cnt" style="background:${s.color}">${cols.length}</span>
+      </div>
+      <div class="kanban-body">
+        ${cols.map(o=>`
+          <div class="kanban-card" draggable="true" ondragstart="state.dragId='${o.id}'">
+            <div style="display:flex;justify-content:space-between;align-items:center">
+              <span class="wo-tag">${o.id}</span>
+              <span class="pill" style="font-size:9px;background:${STATUS_COLOR[o.status]}22;color:${STATUS_COLOR[o.status]}">${o.status}</span>
+            </div>
+            <div style="font-size:12px;font-weight:700;margin-top:6px;font-family:'Syne',sans-serif">${esc(o.customer)}</div>
+            <div style="font-size:11px;color:var(--muted)">${esc(o.part)}</div>
+            <div style="font-size:10px;color:var(--dim);margin-top:4px">截止：${o.deadline}</div>
+            ${stgIdx(o.stage)<STAGES.length-1?`<button class="adv-btn" style="margin-top:8px;width:100%;justify-content:center;font-size:11px" onclick="advanceOrder('${o.id}')">▶ 推進 + 📱LINE</button>`:""}
+          </div>`).join("")}
+        ${cols.length===0?`<div style="font-size:11px;color:var(--border2);text-align:center;padding:16px 0">— 空 —</div>`:""}
+      </div>
+    </div>`;
+  }).join("")}</div>`;
+}
+const PROCS=["雷切","折彎","焊接","研磨","粉塗","液塗","電解拋光","陽極"];
+function renderQuotes(){
+  const f=state.newQuoteForm;
+  const est=f.qty&&f.unitPrice?parseInt(f.qty)*parseFloat(f.unitPrice):0;
+  return `
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+    <div style="font-size:16px;font-weight:800;font-family:'Syne',sans-serif">報價管理</div>
+    <button class="accent-btn" onclick="state.quoteFormOpen=!state.quoteFormOpen;renderContent()">
+      ${state.quoteFormOpen?"✕ 取消":"＋ 新建報價"}
+    </button>
+  </div>
+  ${state.quoteFormOpen?`<div class="card slide-up">
+    <div class="card-title">新建報價單</div>
+    <div class="form-grid">
+      <div><label class="lbl">客戶名稱*</label><input class="inp" value="${esc(f.customer)}" oninput="state.newQuoteForm.customer=this.value"></div>
+      <div><label class="lbl">品名*</label><input class="inp" value="${esc(f.part)}" oninput="state.newQuoteForm.part=this.value"></div>
+      <div><label class="lbl">數量*</label><input class="inp" type="number" value="${f.qty}" oninput="state.newQuoteForm.qty=this.value;renderContent()"></div>
+      <div><label class="lbl">材質</label><input class="inp" value="${esc(f.material)}" oninput="state.newQuoteForm.material=this.value"></div>
+      <div><label class="lbl">單價(NT$)*</label><input class="inp" type="number" value="${f.unitPrice}" oninput="state.newQuoteForm.unitPrice=this.value;renderContent()"></div>
+      <div><label class="lbl">有效天數</label><input class="inp" type="number" value="${f.validDays}" oninput="state.newQuoteForm.validDays=this.value"></div>
+    </div>
+    <div class="form-field"><label class="lbl">產業別</label><select class="inp" onchange="state.newQuoteForm.industry=this.value">
+      ${["機械設備","半導體設備","自動化設備","重電","客製板金"].map(x=>`<option${f.industry===x?" selected":""}>${x}</option>`).join("")}
+    </select></div>
+    <div class="form-field"><label class="lbl">加工製程</label>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:6px">
+        ${PROCS.map(p=>`<button class="chip${f.process.includes(p)?" on":""}" onclick="toggleProcess('${p}')">${p}</button>`).join("")}
+      </div>
+    </div>
+    <div class="form-field"><label class="lbl">備註</label><input class="inp" value="${esc(f.note)}" oninput="state.newQuoteForm.note=this.value"></div>
+    ${est>0?`<div style="background:#0F172A;border-radius:8px;padding:10px 14px;margin-bottom:12px;display:flex;justify-content:space-between"><span style="font-size:13px;color:var(--muted)">預估總金額</span><span style="color:#10B981;font-weight:800;font-size:18px;font-family:'Syne',sans-serif">NT$ ${est.toLocaleString()}</span></div>`:""}
+    <button class="accent-btn" style="width:100%;padding:12px" onclick="submitQuote()">建立報價單 + 發送LINE通知 📱</button>
+  </div>`:""}
+  ${state.quotes.map((q,i)=>`<div class="card slide-up" style="animation-delay:${i*0.04}s">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:8px">
+      <div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <span class="wo-tag">${q.id}</span>
+          <span class="pill" style="background:${q.status==="已接單"?"#14532D":q.status==="待確認"?"#451A03":"#1e3a5f"};color:${q.status==="已接單"?"#86EFAC":q.status==="待確認"?"#FDE68A":"#93C5FD"};font-size:11px">${q.status}</span>
+        </div>
+        <div style="font-size:15px;font-weight:700;margin-top:8px;font-family:'Syne',sans-serif">${esc(q.customer)}</div>
+        <div style="font-size:12px;color:var(--muted)">${esc(q.part)} × ${q.qty} ｜ ${esc(q.material)}</div>
+      </div>
+      <div style="text-align:right">
+        <div style="font-size:20px;font-weight:800;color:#10B981;font-family:'Syne',sans-serif">NT$ ${q.total.toLocaleString()}</div>
+        <div style="font-size:11px;color:var(--muted)">${(+q.unitPrice).toLocaleString()}/件 · ${q.validDays}天</div>
+      </div>
+    </div>
+    ${(q.process||[]).length>0?`<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:10px">${q.process.map(p=>`<span class="pill" style="background:#172554;color:#93C5FD;font-size:10px">${p}</span>`).join("")}</div>`:""}
+    <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
+      <button class="icon-btn" style="color:#EF4444" onclick="exportPDF('${q.id}')">📄 匯出PDF</button>
+      <button class="icon-btn" style="color:#06C755" onclick="resendLine('${q.id}')">📱 重發LINE</button>
+      ${q.status==="待確認"?`<button class="accent-btn" style="font-size:12px;padding:6px 14px" onclick="confirmQuote('${q.id}')">✓ 確認接單</button>`:""}
+      <span style="margin-left:auto;font-size:11px;color:var(--dim);align-self:flex-end">建立：${q.created}</span>
+    </div>
+  </div>`).join("")}`;
+}
+function renderLine(){
+  const TYPES=[{id:"stageAdvance",l:"製程推進通知"},{id:"delay",l:"延誤警示"},{id:"quoteReady",l:"報價通知"},{id:"shipping",l:"出貨通知"},{id:"custom",l:"自訂訊息"}];
+  const lt=state.lineType, lo=state.orders.find(x=>x.id===state.lineOrderId)||state.orders[0];
+  const lq=state.quotes.find(x=>x.id===state.lineQuoteId)||state.quotes[0];
+  let prev="";
+  if(lt==="stageAdvance"&&lo){const si=stgIdx(lo.stage);const ns=STAGE_IDS[Math.min(si+1,STAGES.length-1)];prev=LT.stageAdvance(lo,ns);}
+  else if(lt==="delay"&&lo)prev=LT.delay(lo);
+  else if(lt==="quoteReady"&&lq)prev=LT.quoteReady(lq);
+  else if(lt==="shipping"&&lo)prev=LT.shipping(lo);
+  else if(lt==="custom")prev=state.lineCustomMsg;
+  return `
+  <div class="card">
+    <div style="display:flex;gap:10px;align-items:center;margin-bottom:8px">
+      <span style="font-size:24px">💬</span>
+      <div><div style="font-size:15px;font-weight:800;font-family:'Syne',sans-serif">LINE Bot 即時通知</div><div style="font-size:11px;color:var(--line)">● 連線中 · 自動雙向通訊</div></div>
+    </div>
+    <div style="font-size:12px;color:var(--muted);line-height:1.7">• 工單推進時自動觸發通知<br>• 客戶可直接在LINE回覆確認<br>• 支援報價確認、進度查詢、延誤通知</div>
+  </div>
+  <div class="card">
+    <div class="card-title">手動發送通知</div>
+    <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px">
+      ${TYPES.map(t=>`<button class="chip${state.lineType===t.id?" on":""}" onclick="state.lineType='${t.id}';renderContent()">${t.l}</button>`).join("")}
+    </div>
+    ${(lt==="stageAdvance"||lt==="delay"||lt==="shipping")?`<div class="form-field"><label class="lbl">選擇工單</label><select class="inp" onchange="state.lineOrderId=this.value;renderContent()">${state.orders.map(o=>`<option value="${o.id}"${o.id===(lo?.id)?" selected":""}>${o.id} — ${esc(o.customer)}</option>`).join("")}</select></div>`:""}
+    ${lt==="quoteReady"?`<div class="form-field"><label class="lbl">選擇報價單</label><select class="inp" onchange="state.lineQuoteId=this.value;renderContent()">${state.quotes.map(q=>`<option value="${q.id}"${q.id===(lq?.id)?" selected":""}>${q.id} — ${esc(q.customer)}</option>`).join("")}</select></div>`:""}
+    ${lt==="custom"?`<div class="form-field"><label class="lbl">收件人</label><input class="inp" placeholder="客戶名稱" value="${esc(state.lineCustomTo)}" oninput="state.lineCustomTo=this.value"></div><div class="form-field"><label class="lbl">訊息內容</label><textarea class="inp" style="height:80px;resize:vertical" placeholder="輸入自訂訊息..." oninput="state.lineCustomMsg=this.value;renderContent()">${esc(state.lineCustomMsg)}</textarea></div>`:""}
+    <div style="background:#0A0F1E;border-radius:12px;padding:14px;margin-bottom:14px;border:1px solid var(--border2)">
+      <div style="font-size:11px;color:var(--line);margin-bottom:8px;font-weight:700">📱 LINE 預覽</div>
+      <div class="line-preview">${esc(prev)||"請選擇通知類型"}</div>
+    </div>
+    <button style="background:#06C755;color:#fff;border:none;border-radius:10px;padding:12px;width:100%;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit" onclick="doSendLine()">📱 發送LINE通知</button>
+  </div>
+  <div class="card">
+    <div class="card-title">📋 發送紀錄（${state.lineLog.length}筆）</div>
+    ${state.lineLog.length===0?'<div style="color:var(--dim);text-align:center;padding:20px 0;font-size:13px">尚無發送記錄</div>':""}
+    ${state.lineLog.map(l=>`<div class="row-item">
+      <div class="line-ava">${l.to.slice(0,1)}</div>
+      <div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:600">${esc(l.to)}</div><div style="font-size:11px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(l.msg.split("\n")[0])}</div></div>
+      <div style="text-align:right;flex-shrink:0"><div style="font-size:11px;color:#22C55E">${l.time}</div><span class="pill" style="background:#14532D;color:#86EFAC;font-size:9px;margin-top:3px;display:inline-block">${l.status}</span></div>
+    </div>`).join("")}
+  </div>`;
+}
+function renderAnalytics(){
+  const orders=state.orders;
+  const totalRev=orders.reduce((s,o)=>s+o.amount,0);
+  const byInd={},indRev={};
+  orders.forEach(o=>{byInd[o.industry]=(byInd[o.industry]||0)+1;indRev[o.industry]=(indRev[o.industry]||0)+o.amount;});
+  const maxRev=Math.max(...Object.values(indRev),1);
+  const COLORS=["#3B82F6","#8B5CF6","#10B981","#F59E0B","#EF4444"];
+  const custMap={};
+  orders.forEach(o=>{if(!custMap[o.customer])custMap[o.customer]={name:o.customer,industry:o.industry,orders:0,revenue:0,delayed:0};custMap[o.customer].orders++;custMap[o.customer].revenue+=o.amount;if(o.status==="延誤")custMap[o.customer].delayed++;});
+  const customers=Object.values(custMap).sort((a,b)=>b.revenue-a.revenue);
+  const sc={};STAGES.forEach(s=>{sc[s.id]=orders.filter(o=>o.stage===s.id).length;});
+  const maxSc=Math.max(...Object.values(sc),1);
+  const qs=state.quotes;
+  return `
+  <div class="kpi-grid">
+    ${[{l:"客戶總數",v:customers.length,c:"#3B82F6"},{l:"訂單總數",v:orders.length,c:"#8B5CF6"},{l:"總營收(NT$)",v:`${Math.round(totalRev/1000)}K`,c:"#10B981"},{l:"完工率",v:`${Math.round(orders.filter(o=>o.status==="完成").length/orders.length*100)}%`,c:"#F59E0B"}].map(k=>`<div class="kpi-card" style="border-top:2px solid ${k.c}"><div class="kpi-label">${k.l}</div><div class="kpi-val" style="color:${k.c};font-size:22px">${k.v}</div></div>`).join("")}
+  </div>
+  <div class="card">
+    <div class="card-title">產業別營收分析</div>
+    ${Object.entries(indRev).sort((a,b)=>b[1]-a[1]).map(([ind,rev],i)=>`
+      <div class="chart-bar-wrap">
+        <div style="display:flex;justify-content:space-between;margin-bottom:4px">
+          <span style="font-size:12px;color:var(--text);font-weight:600">${ind}</span>
+          <span style="font-size:12px;color:${COLORS[i%5]};font-weight:700;font-family:'Syne',sans-serif">NT$ ${rev.toLocaleString()}</span>
+        </div>
+        <div class="chart-bar-bg"><div class="chart-bar-fill" style="width:${rev/maxRev*100}%;background:${COLORS[i%5]}"></div></div>
+        <div style="font-size:10px;color:var(--dim);margin-top:2px">${byInd[ind]}筆 · ${Math.round(rev/totalRev*100)}% 佔比</div>
+      </div>`).join("")}
+  </div>
+  <div class="card">
+    <div class="card-title">製程瓶頸分析</div>
+    <div class="bn-wrap">
+      ${STAGES.map(s=>{
+        const cnt=sc[s.id]||0, h=Math.max(4,Math.round(cnt/maxSc*72));
+        return `<div class="bn-col">
+          <div class="bn-cnt" style="color:${cnt>1?"#EF4444":cnt===1?"#F59E0B":"#334155"}">${cnt}</div>
+          <div class="bn-bar" style="height:${h}px;background:${cnt>1?"#EF4444":cnt===1?"#F59E0B":"#1E293B"}"></div>
+          <div class="bn-lbl">${s.label}</div>
+        </div>`;
+      }).join("")}
+    </div>
+    <div style="font-size:11px;color:var(--muted);margin-top:8px">🔴 &gt;1件=潛在瓶頸　🟡 1件=正常　⬛ 0件=空閒</div>
+  </div>
+  <div class="card">
+    <div class="card-title">客戶價值排行</div>
+    <div style="overflow-x:auto">
+      <table class="data-table">
+        <thead><tr><th>#</th><th>客戶</th><th>工單</th><th>累積營收</th><th>延誤率</th></tr></thead>
+        <tbody>${customers.map((c,i)=>`<tr>
+          <td style="color:${i<3?"#F59E0B":"var(--muted)"};font-weight:700">${i+1}</td>
+          <td style="font-weight:600;white-space:nowrap">${esc(c.name)}</td>
+          <td style="color:var(--muted);text-align:center">${c.orders}</td>
+          <td style="color:#10B981;font-weight:700;font-family:'Syne',sans-serif;white-space:nowrap">${c.revenue>0?`$${Math.round(c.revenue/1000)}K`:"—"}</td>
+          <td><span class="pill" style="background:${c.delayed>0?"#7F1D1D":"#14532D"};color:${c.delayed>0?"#FCA5A5":"#86EFAC"};font-size:10px">${c.orders>0?Math.round(c.delayed/c.orders*100):0}%</span></td>
+        </tr>`).join("")}</tbody>
+      </table>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-title">報價轉單分析</div>
+    <div class="kpi-grid">
+      ${[{l:"報價總數",v:qs.length,c:"#3B82F6"},{l:"已接單",v:qs.filter(q=>q.status==="已接單").length,c:"#10B981"},{l:"待確認",v:qs.filter(q=>q.status==="待確認").length,c:"#F59E0B"},{l:"轉換率",v:`${qs.length?Math.round(qs.filter(q=>q.status==="已接單").length/qs.length*100):0}%`,c:"#8B5CF6"}].map(k=>`<div class="kpi-card" style="border-top:2px solid ${k.c};padding:12px"><div class="kpi-label">${k.l}</div><div class="kpi-val" style="color:${k.c};font-size:20px;margin-top:4px">${k.v}</div></div>`).join("")}
+    </div>
+  </div>`;
+}
+function renderNotif(){
+  const delayed=state.orders.filter(o=>o.status==="延誤");
+  const near=state.orders.filter(o=>{const d=daysLeft(o.deadline);return d>=0&&d<=2&&o.status!=="完成";});
+  const TYPE_STYLE={advance:{bg:"#172554",c:"#60A5FA",i:"▶"},warn:{bg:"#451A03",c:"#FDE68A",i:"⚠"},success:{bg:"#14532D",c:"#86EFAC",i:"✓"},info:{bg:"var(--border2)",c:"#94A3B8",i:"ℹ"}};
+  return `
+  ${(delayed.length>0||near.length>0)?`<div class="card">
+    <div class="card-title">🚨 需要立即處理</div>
+    ${delayed.map(o=>`<div style="background:#2D0A0A;border:1px solid #7F1D1D;border-radius:10px;padding:12px;margin-bottom:8px">
+      <div style="display:flex;gap:8px;align-items:center"><span class="wo-tag">${o.id}</span><span style="font-size:13px;color:#FCA5A5;font-weight:700">${esc(o.customer)} — 工單延誤</span></div>
+      <div style="font-size:12px;color:#F87171;margin-top:4px">${esc(o.part)} · 截止日：${o.deadline}</div>
+    </div>`).join("")}
+    ${near.map(o=>{const d=daysLeft(o.deadline);return `<div style="background:#2D1B00;border:1px solid #78350F;border-radius:10px;padding:12px;margin-bottom:8px">
+      <div style="display:flex;gap:8px;align-items:center"><span class="wo-tag">${o.id}</span><span style="font-size:13px;color:#FDE68A;font-weight:700">${esc(o.customer)} — 即將到期</span></div>
+      <div style="font-size:12px;color:#FCD34D;margin-top:4px">${esc(o.part)} · 剩 ${d} 天 · ${stg(o.stage)?.label}</div>
+    </div>`;}).join("")}
+  </div>`:""}
+  <div class="card">
+    <div class="card-title">🏭 工站即時狀態</div>
+    ${STAGES.filter(s=>["cutting","bending","welding","coating","qc"].includes(s.id)).map(s=>{
+      const cnt=state.orders.filter(o=>o.stage===s.id).length;
+      const del=state.orders.filter(o=>o.stage===s.id&&o.status==="延誤").length;
+      return `<div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--bg)">
+        <div style="width:36px;height:36px;border-radius:10px;background:${cnt>0?s.color+"22":"var(--border2)"};border:1px solid ${cnt>0?s.color:"var(--border2)"};display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0">${s.icon}</div>
+        <div style="flex:1"><div style="font-size:13px;font-weight:700">${s.label}</div><div style="font-size:11px;color:var(--muted)">${cnt}件在製${del>0?` · ${del}件延誤`:""}</div></div>
+        <span class="pill" style="background:${cnt>2?"#7F1D1D":cnt>0?"#172554":"#14532D"};color:${cnt>2?"#FCA5A5":cnt>0?"#93C5FD":"#86EFAC"};font-size:11px">${cnt>2?"壅塞":cnt>0?"運行中":"空閒"}</span>
+      </div>`;
+    }).join("")}
+  </div>
+  <div class="card">
+    <div class="card-title">系統通知 (${state.notifications.length})</div>
+    ${state.notifications.length===0?'<div style="color:var(--dim);text-align:center;padding:20px 0;font-size:13px">暫無通知</div>':""}
+    ${state.notifications.map(n=>{const ts=TYPE_STYLE[n.type]||TYPE_STYLE.info;return `<div style="display:flex;gap:10px;padding:10px 0;border-bottom:1px solid var(--bg);align-items:flex-start">
+      <div style="width:28px;height:28px;border-radius:8px;background:${ts.bg};display:flex;align-items:center;justify-content:center;color:${ts.c};font-size:13px;flex-shrink:0;font-weight:800">${ts.i}</div>
+      <div style="flex:1"><div style="font-size:13px">${esc(n.msg)}</div><div style="font-size:11px;color:var(--dim);margin-top:2px">${n.time}</div></div>
+    </div>`;}).join("")}
+  </div>`;
+}
+function renderContent(){render();}
+function setPFilter(v){state.orderPriorityFilter=v;renderContent();}
+function setSFilter(v){state.orderStageFilter=v;renderContent();}
+function onDrop(sid){if(state.dragId){advanceToStage(state.dragId,sid);state.dragId=null;}}
+function advanceToStage(id,sid){
+  const o=state.orders.find(x=>x.id===id); if(!o)return;
+  const ns=sid, isShip=ns==="shipping";
+  const msg=isShip?LT.shipping(o):LT.stageAdvance(o,ns);
+  sendLine(msg,o.customer,id);
+  pushNotif(`${id} 移至「${stg(ns)?.label}」`,"advance");
+  o.stage=ns; o.status=isShip?"完成":"進行中";
+  render();
+}
+function toggleProcess(p){
+  const f=state.newQuoteForm;
+  f.process=f.process.includes(p)?f.process.filter(x=>x!==p):[...f.process,p];
+  renderContent();
+}
+function doSendLine(){
+  const lt=state.lineType;
+  const lo=state.orders.find(x=>x.id===state.lineOrderId)||state.orders[0];
+  const lq=state.quotes.find(x=>x.id===state.lineQuoteId)||state.quotes[0];
+  let msg="",to="";
+  if(lt==="stageAdvance"&&lo){const si=stgIdx(lo.stage);const ns=STAGE_IDS[Math.min(si+1,STAGES.length-1)];msg=LT.stageAdvance(lo,ns);to=lo.customer;}
+  else if(lt==="delay"&&lo){msg=LT.delay(lo);to=lo.customer;}
+  else if(lt==="quoteReady"&&lq){msg=LT.quoteReady(lq);to=lq.customer;}
+  else if(lt==="shipping"&&lo){msg=LT.shipping(lo);to=lo.customer;}
+  else if(lt==="custom"){msg=state.lineCustomMsg;to=state.lineCustomTo||"客戶";}
+  if(!msg.trim()){showToast("訊息不可空白","error");return;}
+  sendLine(msg,to);
+  render();
+}
+function confirmQuote(id){
+  const q=state.quotes.find(x=>x.id===id); if(!q)return;
+  q.status="已接單";
+  sendLine(LT.quoteReady(q),q.customer,id);
+  pushNotif(`報價 ${id} 已接單`,"success");
+  render();
+}
+function resendLine(id){
+  const q=state.quotes.find(x=>x.id===id); if(!q)return;
+  sendLine(LT.quoteReady(q),q.customer);
+  render();
+}
+function submitQuote(){
+  const f=state.newQuoteForm;
+  if(!f.customer||!f.qty||!f.unitPrice){showToast("請填必填欄位","error");return;}
+  const total=parseInt(f.qty)*parseFloat(f.unitPrice);
+  const nq={id:`QT-${String(state.quoteCount++).padStart(4,"0")}`, customer:f.customer, industry:f.industry, part:f.part, qty:parseInt(f.qty), material:f.material, process:[...f.process], unitPrice:parseFloat(f.unitPrice), total, validDays:parseInt(f.validDays)||30, status:"報價中", note:f.note, created:new Date().toISOString().slice(0,10)};
+  state.quotes.unshift(nq);
+  sendLine(LT.quoteReady(nq),nq.customer,nq.id);
+  pushNotif(`報價單 ${nq.id} 已建立`,"success");
+  state.quoteFormOpen=false;
+  state.newQuoteForm={customer:"",industry:"機械設備",part:"",qty:"",material:"",process:[],unitPrice:"",validDays:"30",note:""};
+  render();
+}
+function exportPDF(id){
+  const q=state.quotes.find(x=>x.id===id); if(!q)return;
+  const procs=(q.process||[]).map(p=>`<span style="background:#dbeafe;color:#1d4ed8;padding:2px 10px;border-radius:20px;font-size:11px;font-weight:600;margin-right:6px">${p}</span>`).join("");
+  const html=`<!DOCTYPE html><html><head><meta charset="utf-8"><title>報價單 ${q.id}</title><style>body{font-family:"Noto Sans TC",Arial,sans-serif;padding:40px;color:#1a202c;max-width:800px;margin:0 auto}.header{display:flex;justify-content:space-between;align-items:flex-start;padding-bottom:24px;border-bottom:3px solid #1a56db;margin-bottom:28px}.company{font-size:22px;font-weight:800;color:#1a56db}.sub{font-size:12px;color:#6b7280;margin-top:4px}.qtnum{font-size:28px;font-weight:800;text-align:right}.qtdate{font-size:12px;color:#6b7280;text-align:right;margin-top:4px}.sec-title{font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid #e5e7eb;margin-top:20px}table{width:100%;border-collapse:collapse}th{background:#f9fafb;font-size:12px;font-weight:700;padding:10px;text-align:left;border-bottom:2px solid #e5e7eb}td{padding:10px;font-size:13px;border-bottom:1px solid #f3f4f6}.total-row{background:#eff6ff;font-weight:700}.total-row td{color:#1a56db;font-size:15px;padding:14px 10px}.validity{background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:10px 16px;font-size:12px;color:#166534;margin-top:16px}.footer{margin-top:36px;padding-top:16px;border-top:1px solid #e5e7eb;display:flex;justify-content:space-between;font-size:11px;color:#9ca3af}@media print{.no-print{display:none}}</style></head><body>
+  <div class="header"><div><div class="company">⬡ MetalFlow 板金代工</div><div class="sub">專業板金製造 · 粉體/液體塗裝一站式服務</div><div class="sub" style="margin-top:6px">Tel: (04) 2XXX-XXXX ｜ 台中市工業區</div></div><div><div class="qtnum">${q.id}</div><div class="qtdate">建立日期：${q.created}</div><div class="qtdate" style="color:#ef4444;font-weight:600">有效期限：${q.validDays} 天</div></div></div>
+  <div class="sec-title">客戶資訊</div><table><tr><td><strong>公司名稱</strong><br>${q.customer}</td><td><strong>產業別</strong><br>${q.industry||"—"}</td><td><strong>報價狀態</strong><br><span style="background:#dbeafe;color:#1d4ed8;padding:2px 10px;border-radius:20px;font-size:11px;font-weight:600">${q.status}</span></td></tr></table>
+  <div class="sec-title">報價明細</div><table><thead><tr><th>品名</th><th>材質</th><th>數量</th><th>單價</th><th>小計</th></tr></thead><tbody><tr><td>${q.part}</td><td>${q.material||"—"}</td><td>${q.qty} 件</td><td>NT$ ${(+q.unitPrice).toLocaleString()}</td><td>NT$ ${(+q.total).toLocaleString()}</td></tr><tr class="total-row"><td colspan="4" style="text-align:right">合計金額</td><td>NT$ ${(+q.total).toLocaleString()}</td></tr></tbody></table>
+  <div class="sec-title">加工製程</div><div style="margin-top:6px">${procs||"—"}</div>
+  ${q.note?`<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:12px;font-size:12px;color:#92400e;margin-top:14px">📌 備註：${q.note}</div>`:""}
+  <div class="validity">✅ 本報價單有效期限自建立日起 ${q.validDays} 天。如需確認訂單，請回覆 LINE 或來電洽詢。</div>
+  <div class="footer"><div>MetalFlow 系統自動產生</div><div>列印日期：${new Date().toLocaleDateString("zh-TW")}</div></div>
+  <br><div class="no-print" style="text-align:center;margin-top:20px"><button onclick="window.print()" style="background:#1a56db;color:#fff;border:none;padding:12px 28px;border-radius:8px;font-size:14px;cursor:pointer;font-weight:700">🖨 列印 / 儲存PDF</button></div>
+  </body></html>`;
+  const w=window.open("","_blank");
+  if(w){w.document.write(html);w.document.close();}else showToast("請允許彈出視窗","error");
+}
+function openViewModal(id){
+  const o=state.orders.find(x=>x.id===id); if(!o)return;
+  const si=stgIdx(o.stage), s=stg(o.stage), pct=Math.round(si/(STAGES.length-1)*100);
+  $("modal-box").innerHTML=`
+    <div class="modal-head"><div class="modal-title">${o.id} 工單詳情</div><button class="close-btn" onclick="closeModal()">✕</button></div>
+    <div style="background:#0F172A;border-radius:10px;padding:12px;margin-bottom:14px">
+      <div style="display:flex;justify-content:space-between;margin-bottom:8px">
+        <span style="font-size:13px;color:${s.color};font-weight:700">${s.icon} ${s.label}</span>
+        <span style="font-size:13px;color:#10B981;font-weight:700">${pct}%</span>
+      </div>
+      <div class="bar-bg" style="height:8px"><div class="bar-fill" style="height:8px;width:${pct}%;background:linear-gradient(90deg,#3B82F6,${s.color})"></div></div>
+    </div>
+    ${[["工單號",o.id],["客戶",o.customer],["品名",o.part],["數量",`${o.qty} 件`],["材質",o.material],["產業",o.industry],["截止日期",o.deadline],["金額",o.amount>0?`NT$ ${o.amount.toLocaleString()}`:"未定"],["狀態",o.status],["優先",o.priority],["備註",o.note||"—"]].map(([k,v])=>`<div class="detail-row"><span class="detail-key">${k}</span><span class="detail-val">${esc(v)}</span></div>`).join("")}
+    <button style="background:#06C755;color:#fff;border:none;border-radius:10px;padding:11px;width:100%;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;margin-top:14px" onclick="sendCurrentOrderLine('${o.id}');closeModal()">📱 發送進度通知給客戶</button>
+    <button class="icon-btn" style="width:100%;padding:10px;margin-top:8px;text-align:center" onclick="closeModal()">關閉</button>`;
+  $("modal-wrap").classList.add("show");
+}
+function sendCurrentOrderLine(id){
+  const o=state.orders.find(x=>x.id===id); if(!o)return;
+  sendLine(LT.stageAdvance(o,o.stage),o.customer,id);
+  render();
+}
+function openNewOrderModal(){
+  const f=state.newOrderForm;
+  $("modal-box").innerHTML=`
+    <div class="modal-head"><div class="modal-title">新建工單</div><button class="close-btn" onclick="closeModal()">✕</button></div>
+    <div class="form-grid">
+      <div><label class="lbl">客戶名稱*</label><input class="inp" id="nof-customer" value="${esc(f.customer)}"></div>
+      <div><label class="lbl">品名*</label><input class="inp" id="nof-part" value="${esc(f.part)}"></div>
+      <div><label class="lbl">數量*</label><input class="inp" type="number" id="nof-qty" value="${f.qty}"></div>
+      <div><label class="lbl">材質</label><input class="inp" id="nof-material" value="${esc(f.material)}"></div>
+      <div><label class="lbl">截止日期</label><input class="inp" type="date" id="nof-deadline" value="${f.deadline}"></div>
+      <div><label class="lbl">金額(NT$)</label><input class="inp" type="number" id="nof-amount" value="${f.amount}"></div>
+    </div>
+    <div class="form-grid">
+      <div><label class="lbl">產業</label><select class="inp" id="nof-industry">${["機械設備","半導體設備","自動化設備","重電","客製板金"].map(x=>`<option${f.industry===x?" selected":""}>${x}</option>`).join("")}</select></div>
+      <div><label class="lbl">優先</label><select class="inp" id="nof-priority">${["高","中","低"].map(x=>`<option${f.priority===x?" selected":""}>${x}</option>`).join("")}</select></div>
+    </div>
+    <div class="form-grid">
+      <div><label class="lbl">起始站點</label><select class="inp" id="nof-stage">${STAGES.map(s=>`<option value="${s.id}"${f.stage===s.id?" selected":""}>${s.label}</option>`).join("")}</select></div>
+    </div>
+    <div style="margin-bottom:14px"><label class="lbl">備註</label><input class="inp" id="nof-note" value="${esc(f.note)}"></div>
+    <div style="display:flex;gap:10px">
+      <button class="accent-btn" style="flex:1;padding:11px" onclick="submitNewOrder()">建立工單</button>
+      <button class="icon-btn" style="flex:1;padding:11px;text-align:center" onclick="closeModal()">取消</button>
+    </div>`;
+  $("modal-wrap").classList.add("show");
+}
+function submitNewOrder(){
+  const g=id=>$(id)?.value||"";
+  const customer=g("nof-customer"), part=g("nof-part"), qty=g("nof-qty");
+  if(!customer||!part||!qty){showToast("請填必填欄位","error");return;}
+  const nw={id:`WO-${String(state.orderWoCount++).padStart(4,"0")}`,customer,part,qty:parseInt(qty),material:g("nof-material"),stage:g("nof-stage"),priority:g("nof-priority"),deadline:g("nof-deadline"),amount:parseFloat(g("nof-amount"))||0,note:g("nof-note"),industry:g("nof-industry"),status:"待處理"};
+  state.orders.unshift(nw);
+  pushNotif(`新工單 ${nw.id} 已建立`,"success");
+  showToast("新工單已建立");
+  closeModal(); render();
+}
+function closeModal(){$("modal-wrap").classList.remove("show");}
+function bindEvents(){}
+$("ham-btn").addEventListener("click",()=>{$("sidebar").classList.add("open");$("scrim").classList.add("show");});
+$("scrim").addEventListener("click",()=>{$("sidebar").classList.remove("open");$("scrim").classList.remove("show");});
+$("notif-btn").addEventListener("click",()=>setTab("notif"));
+$("modal-wrap").addEventListener("click",e=>{if(e.target===$("modal-wrap"))closeModal();});
+window.addEventListener("load",()=>{
+  if(navigator.standalone===false && /iPhone|iPad|iPod/.test(navigator.userAgent)){
+    const b=document.createElement("div");
+    b.style.cssText="position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:#172554;color:#93C5FD;padding:10px 16px;border-radius:12px;font-size:12px;font-family:'DM Sans',sans-serif;z-index:9000;text-align:center;border:1px solid #1E40AF;max-width:280px";
+    b.innerHTML="📱 點 Safari 分享按鈕 → <strong>加入主畫面</strong>，即可像 App 使用！<br><button onclick='this.parentNode.remove()' style='background:none;border:none;color:#93C5FD;font-size:16px;cursor:pointer;float:right;margin-top:-6px'>✕</button>";
+    document.body.appendChild(b);
+    setTimeout(()=>b.remove(),8000);
+  }
+});
+render();
+</script>
+</body>
+</html>
