@@ -13,6 +13,7 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 :root{
@@ -2412,10 +2413,11 @@ const DSG_STAGES=[
 const DSG_STATUS={"待分配":"#64748B","進行中":"#3B82F6","審核中":"#F59E0B","已完成":"#22C55E","暫停":"#EF4444"};
 const DSG_TOOLS=["SolidWorks","AutoCAD","Inventor","Creo","CATIA","Fusion360","其他"];
 function renderDesign(){
-  const tabs=[{id:"projects",label:"📁 案件總覽"},{id:"timeline",label:"⏱ 時間表"},{id:"report",label:"📊 統計報表"}];
+  const tabs=[{id:"projects",label:"📁 案件總覽"},{id:"bomMgr",label:"📋 BOM管理"},{id:"timeline",label:"⏱ 時間表"},{id:"report",label:"📊 統計報表"}];
   const tabBar=tabs.map(t=>`<button class="chip${state.designTab===t.id?" on":""}" onclick="state.designTab='${t.id}';renderContent()">${t.label}</button>`).join("");
   let content="";
   if(state.designTab==="projects") content=renderDesignProjects();
+  else if(state.designTab==="bomMgr") content=renderBomManager();
   else if(state.designTab==="timeline") content=renderDesignTimeline();
   else if(state.designTab==="report") content=renderDesignReport();
   return `<div class="card"><div style="display:flex;gap:8px;flex-wrap:wrap">${tabBar}</div></div>${content}`;
@@ -2784,6 +2786,318 @@ function renderDesignReport(){
     <div class="card-title">🛠 設計工具使用統計</div>
     ${Object.entries(byTool).map(([t,c])=>`<div class="row-item"><span style="font-weight:600">${esc(t)}</span><span style="color:#3B82F6;font-weight:700">${c} 案</span></div>`).join("")}
   </div>`;
+}
+// ─── BOM 管理系統 ──────────────────────────────────────────
+function renderBomManager(){
+  const projects=state.designProjects.filter(p=>p.bom&&p.bom.length>0||p.status!=="已完成");
+  const allBom=[];
+  state.designProjects.forEach(p=>{(p.bom||[]).forEach(b=>{allBom.push({...b,projectId:p.id,projectName:p.projectName,customer:p.customer});});});
+  return `
+  <div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <div class="card-title" style="margin:0">📋 BOM 材料清單總覽</div>
+      <div style="display:flex;gap:8px">
+        <button class="accent-btn" onclick="openBomOcrModal()">📷 拍照辨識匯入</button>
+      </div>
+    </div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:14px">支援上傳圖面/BOM表格照片，系統自動 OCR 辨識文字並匯入 BOM。也可手動編輯每個案件的 BOM。</div>
+  </div>
+  ${state.designProjects.length===0?'<div class="card"><div style="text-align:center;color:var(--muted);padding:20px">尚無設計案件，請先建立案件</div></div>':""}
+  ${state.designProjects.map(p=>{
+    const bom=p.bom||[];
+    const totalParts=bom.reduce((s,b)=>s+(b.qty||0),0);
+    return `<div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+        <div><span class="wo-tag">${p.id}</span> <span style="font-weight:700;font-size:14px">${esc(p.projectName)}</span> <span style="color:var(--muted);font-size:12px">${esc(p.customer||"")}</span></div>
+        <div style="display:flex;gap:6px">
+          <button class="icon-btn" style="color:#3B82F6" onclick="openBomEditModal('${p.id}')">✏️ 編輯</button>
+          <button class="icon-btn" style="color:#8B5CF6" onclick="openBomOcrModal('${p.id}')">📷 辨識</button>
+        </div>
+      </div>
+      ${bom.length===0?'<div style="color:var(--muted);font-size:12px;text-align:center;padding:8px">尚無BOM資料，點「✏️ 編輯」手動新增或「📷 辨識」圖片匯入</div>':`
+      <div style="overflow-x:auto"><table style="width:100%;font-size:12px;border-collapse:collapse">
+        <tr style="color:var(--muted);border-bottom:1px solid var(--border2)"><th style="padding:6px;text-align:left">#</th><th style="padding:6px;text-align:left">品名</th><th style="padding:6px">規格/尺寸</th><th style="padding:6px">數量</th><th style="padding:6px">材質</th><th style="padding:6px">單位</th><th style="padding:6px;text-align:left">備註</th>${bom[0]?.photo?'<th style="padding:6px">圖片</th>':""}</tr>
+        ${bom.map((b,i)=>`<tr style="border-bottom:1px solid var(--border)">
+          <td style="padding:6px">${i+1}</td>
+          <td style="padding:6px;font-weight:600">${esc(b.name)}</td>
+          <td style="padding:6px;text-align:center">${esc(b.spec||"—")}</td>
+          <td style="padding:6px;text-align:center;font-weight:700">${b.qty||0}</td>
+          <td style="padding:6px;text-align:center">${esc(b.material||"—")}</td>
+          <td style="padding:6px;text-align:center">${esc(b.unit||"件")}</td>
+          <td style="padding:6px;font-size:11px">${esc(b.note||"")}</td>
+          ${b.photo?`<td style="padding:6px;text-align:center"><img src="${b.photo}" style="width:40px;height:40px;object-fit:cover;border-radius:4px;cursor:pointer" onclick="openPhotoFull(0,this)"></td>`:""}</tr>`).join("")}
+        <tr style="font-weight:700;border-top:2px solid var(--border2)"><td colspan="3" style="padding:6px">合計</td><td style="padding:6px;text-align:center">${totalParts}</td><td colspan="3"></td></tr>
+      </table></div>`}
+    </div>`;
+  }).join("")}`;
+}
+function openBomEditModal(projectId){
+  const p=state.designProjects.find(x=>x.id===projectId);if(!p)return;
+  const bom=p.bom||[];
+  $("modal-box").innerHTML=`
+    <div class="modal-head"><div class="modal-title">📋 編輯 BOM — ${esc(p.projectName)}</div><button class="close-btn" onclick="closeModal()">✕</button></div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:10px">案件 ${p.id} · ${esc(p.customer||"")}</div>
+    <div id="bom-edit-list">
+      ${bom.map((b,i)=>bomEditRow(b,i)).join("")}
+    </div>
+    <div style="display:flex;gap:8px;margin-top:8px">
+      <button class="icon-btn" style="flex:1;text-align:center;padding:10px;border:1px dashed var(--border2);border-radius:8px" onclick="addBomEditRow()">＋ 手動新增項目</button>
+      <button class="icon-btn" style="flex:1;text-align:center;padding:10px;border:1px dashed #8B5CF6;border-radius:8px;color:#8B5CF6" onclick="closeModal();setTimeout(()=>openBomOcrModal('${p.id}'),200)">📷 圖片辨識匯入</button>
+    </div>
+    <button class="accent-btn" style="width:100%;padding:12px;margin-top:14px" onclick="saveBomEdit('${p.id}')">💾 儲存 BOM</button>`;
+  $("modal-wrap").classList.add("show");
+}
+function bomEditRow(b,idx){
+  b=b||{};
+  return `<div class="bom-edit-row" style="background:#0F172A;border-radius:10px;padding:10px;margin-bottom:8px;position:relative">
+    <button onclick="this.parentElement.remove()" style="position:absolute;top:6px;right:6px;background:#EF4444;color:#fff;border:none;border-radius:50%;width:20px;height:20px;font-size:11px;cursor:pointer;display:flex;align-items:center;justify-content:center">✕</button>
+    <div style="display:grid;grid-template-columns:2fr 1.5fr 1fr;gap:6px">
+      <div><label class="lbl" style="font-size:10px">品名*</label><input class="inp bom-e-name" value="${esc(b.name||"")}"></div>
+      <div><label class="lbl" style="font-size:10px">規格/尺寸</label><input class="inp bom-e-spec" value="${esc(b.spec||"")}"></div>
+      <div><label class="lbl" style="font-size:10px">數量*</label><input class="inp bom-e-qty" type="number" value="${b.qty||0}"></div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 2fr;gap:6px;margin-top:6px">
+      <div><label class="lbl" style="font-size:10px">材質</label><input class="inp bom-e-mat" value="${esc(b.material||"")}"></div>
+      <div><label class="lbl" style="font-size:10px">單位</label><select class="inp bom-e-unit"><option${b.unit==="件"||!b.unit?" selected":""}>件</option><option${b.unit==="片"?" selected":""}>片</option><option${b.unit==="支"?" selected":""}>支</option><option${b.unit==="組"?" selected":""}>組</option><option${b.unit==="kg"?" selected":""}>kg</option><option${b.unit==="公尺"?" selected":""}>公尺</option><option${b.unit==="個"?" selected":""}>個</option></select></div>
+      <div><label class="lbl" style="font-size:10px">備註</label><input class="inp bom-e-note" value="${esc(b.note||"")}"></div>
+    </div>
+    <div style="margin-top:6px">
+      <label class="lbl" style="font-size:10px">零件圖片</label>
+      <div style="display:flex;gap:6px;align-items:center">
+        ${b.photo?`<img src="${b.photo}" class="bom-e-photo-preview" style="width:50px;height:50px;object-fit:cover;border-radius:6px">`:'<div class="bom-e-photo-preview"></div>'}
+        <label style="display:flex;align-items:center;justify-content:center;width:50px;height:50px;border:1px dashed var(--border2);border-radius:6px;cursor:pointer;color:var(--muted);font-size:18px;flex-shrink:0">
+          📷<input type="file" accept="image/*" capture="environment" style="display:none" onchange="handleBomItemPhoto(this)">
+        </label>
+        <input type="hidden" class="bom-e-photo" value="${esc(b.photo||"")}">
+      </div>
+    </div>
+  </div>`;
+}
+function addBomEditRow(){
+  const list=$("bom-edit-list");if(!list)return;
+  const div=document.createElement("div");
+  div.innerHTML=bomEditRow({},list.children.length);
+  list.appendChild(div.firstElementChild);
+}
+async function handleBomItemPhoto(input){
+  const file=input.files[0];if(!file)return;
+  try{
+    const dataUrl=await compressImage(file,400,0.5);
+    const row=input.closest(".bom-edit-row");
+    const preview=row.querySelector(".bom-e-photo-preview");
+    const hidden=row.querySelector(".bom-e-photo");
+    if(preview.tagName==="IMG"){preview.src=dataUrl;}
+    else{const img=document.createElement("img");img.src=dataUrl;img.style.cssText="width:50px;height:50px;object-fit:cover;border-radius:6px";img.className="bom-e-photo-preview";preview.replaceWith(img);}
+    hidden.value=dataUrl;
+  }catch(e){showToast("圖片處理失敗","error");}
+}
+function collectBomEditData(){
+  const rows=document.querySelectorAll(".bom-edit-row");
+  const bom=[];
+  rows.forEach(row=>{
+    const name=row.querySelector(".bom-e-name")?.value||"";
+    if(!name)return;
+    bom.push({
+      name,
+      spec:row.querySelector(".bom-e-spec")?.value||"",
+      qty:parseInt(row.querySelector(".bom-e-qty")?.value)||0,
+      material:row.querySelector(".bom-e-mat")?.value||"",
+      unit:row.querySelector(".bom-e-unit")?.value||"件",
+      note:row.querySelector(".bom-e-note")?.value||"",
+      photo:row.querySelector(".bom-e-photo")?.value||""
+    });
+  });
+  return bom;
+}
+async function saveBomEdit(projectId){
+  const bom=collectBomEditData();
+  try{
+    await db.collection("designProjects").doc(projectId).set({bom},{merge:true});
+    pushNotif(`${projectId} BOM 已更新 (${bom.length}項)`,"success");showToast(`BOM 已儲存 (${bom.length}項)`);closeModal();
+  }catch(e){showToast("儲存失敗","error");}
+}
+// ─── OCR 圖片辨識匯入 ──────────────────────────────────────
+let ocrTargetProject="";
+function openBomOcrModal(projectId){
+  ocrTargetProject=projectId||"";
+  const projectOpts=state.designProjects.map(p=>`<option value="${p.id}"${p.id===ocrTargetProject?" selected":""}>${p.id} — ${esc(p.projectName)}</option>`).join("");
+  $("modal-box").innerHTML=`
+    <div class="modal-head"><div class="modal-title">📷 BOM 圖片辨識匯入</div><button class="close-btn" onclick="closeModal()">✕</button></div>
+    <div style="margin-bottom:10px"><label class="lbl">匯入到案件*</label><select class="inp" id="ocr-project"><option value="">— 選擇案件 —</option>${projectOpts}</select></div>
+    <div style="margin-bottom:14px">
+      <label class="lbl">上傳 BOM 表格圖片（圖面、表格截圖、手寫均可）</label>
+      <div style="display:flex;gap:8px;margin-top:6px">
+        <label style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:120px;border:2px dashed var(--border2);border-radius:12px;cursor:pointer;color:var(--muted);text-align:center;padding:16px">
+          <span style="font-size:36px">📷</span>
+          <span style="font-size:12px;margin-top:6px">拍照上傳</span>
+          <input type="file" accept="image/*" capture="environment" style="display:none" onchange="previewOcrImage(this)">
+        </label>
+        <label style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:120px;border:2px dashed var(--border2);border-radius:12px;cursor:pointer;color:var(--muted);text-align:center;padding:16px">
+          <span style="font-size:36px">📁</span>
+          <span style="font-size:12px;margin-top:6px">選擇檔案</span>
+          <input type="file" accept="image/*" style="display:none" onchange="previewOcrImage(this)">
+        </label>
+      </div>
+      <div id="ocr-preview" style="margin-top:10px;text-align:center;display:none">
+        <img id="ocr-preview-img" style="max-width:100%;max-height:300px;border-radius:8px;border:1px solid var(--border2)">
+      </div>
+      <input type="hidden" id="ocr-image-data">
+    </div>
+    <div style="margin-bottom:10px">
+      <label class="lbl">辨識語言</label>
+      <div style="display:flex;gap:8px">
+        <button class="chip on" id="ocr-lang-chi" onclick="setOcrLang('chi_tra+eng')">中文+英文</button>
+        <button class="chip" id="ocr-lang-eng" onclick="setOcrLang('eng')">純英文</button>
+      </div>
+      <input type="hidden" id="ocr-lang" value="chi_tra+eng">
+    </div>
+    <button class="accent-btn" style="width:100%;padding:12px" id="ocr-start-btn" onclick="startOcr()">🔍 開始辨識</button>
+    <div id="ocr-progress" style="display:none;margin-top:14px">
+      <div style="font-size:13px;font-weight:600;margin-bottom:6px" id="ocr-status-text">準備中...</div>
+      <div class="bar-bg" style="height:8px"><div class="bar-fill" id="ocr-bar" style="height:8px;width:0%;background:linear-gradient(90deg,#3B82F6,#8B5CF6);transition:width .3s"></div></div>
+    </div>
+    <div id="ocr-result" style="display:none;margin-top:14px">
+      <div class="lbl">辨識結果（可編輯後匯入）</div>
+      <textarea class="inp" id="ocr-text" rows="6" style="resize:vertical;font-size:12px;font-family:monospace"></textarea>
+      <button class="accent-btn" style="width:100%;padding:12px;margin-top:10px;background:#8B5CF6" onclick="parseOcrToBom()">📋 解析並匯入 BOM</button>
+    </div>
+    <div id="ocr-parsed" style="display:none;margin-top:14px">
+      <div class="lbl">解析結果預覽</div>
+      <div id="ocr-parsed-list"></div>
+      <button class="accent-btn" style="width:100%;padding:12px;margin-top:10px" onclick="confirmOcrImport()">✅ 確認匯入 BOM</button>
+    </div>`;
+  $("modal-wrap").classList.add("show");
+}
+function setOcrLang(lang){
+  $("ocr-lang").value=lang;
+  document.querySelectorAll("[id^=ocr-lang-]").forEach(b=>b.classList.remove("on"));
+  if(lang.includes("chi"))$("ocr-lang-chi").classList.add("on");
+  else $("ocr-lang-eng").classList.add("on");
+}
+async function previewOcrImage(input){
+  const file=input.files[0];if(!file)return;
+  showToast("處理圖片中...");
+  try{
+    const dataUrl=await compressImage(file,1200,0.8);
+    $("ocr-image-data").value=dataUrl;
+    $("ocr-preview-img").src=dataUrl;
+    $("ocr-preview").style.display="block";
+    showToast("圖片已載入，點擊開始辨識");
+  }catch(e){showToast("圖片處理失敗","error");}
+}
+async function startOcr(){
+  const imageData=$("ocr-image-data")?.value;
+  if(!imageData){showToast("請先上傳圖片","error");return;}
+  const lang=$("ocr-lang")?.value||"chi_tra+eng";
+  $("ocr-progress").style.display="block";
+  $("ocr-result").style.display="none";
+  $("ocr-parsed").style.display="none";
+  $("ocr-start-btn").disabled=true;
+  $("ocr-start-btn").textContent="辨識中...";
+  try{
+    const worker=await Tesseract.createWorker(lang,1,{
+      logger:m=>{
+        if(m.status==="recognizing text"){
+          const pct=Math.round((m.progress||0)*100);
+          $("ocr-bar").style.width=pct+"%";
+          $("ocr-status-text").textContent=`辨識中... ${pct}%`;
+        }else{
+          $("ocr-status-text").textContent=m.status||"處理中...";
+        }
+      }
+    });
+    const {data:{text}}=await worker.recognize(imageData);
+    await worker.terminate();
+    $("ocr-text").value=text;
+    $("ocr-result").style.display="block";
+    $("ocr-status-text").textContent="✅ 辨識完成！";
+    $("ocr-bar").style.width="100%";
+    showToast("辨識完成！請檢查結果後點擊解析匯入");
+  }catch(e){
+    console.error("OCR失敗:",e);
+    $("ocr-status-text").textContent="❌ 辨識失敗";
+    showToast("OCR辨識失敗，請重試","error");
+  }
+  $("ocr-start-btn").disabled=false;
+  $("ocr-start-btn").textContent="🔍 重新辨識";
+}
+function parseOcrToBom(){
+  const text=$("ocr-text")?.value||"";
+  if(!text.trim()){showToast("無辨識文字","error");return;}
+  const lines=text.split("\n").map(l=>l.trim()).filter(l=>l.length>1);
+  const parsed=[];
+  const numRegex=/\d+/;
+  const matKeywords=["SS","SUS","SPCC","SPHC","AL","鋁","不鏽鋼","鐵板","鍍鋅","銅","碳鋼","S45C","SCM","SK","鋼板","板材","圓管","方管","角鐵","扁鐵","C型鋼","H型鋼","白鐵"];
+  lines.forEach(line=>{
+    // skip header-like lines
+    if(/^(序號|品名|名稱|項次|#|NO|no\.|item|ITEM|材質|數量|規格|單位|備註)/i.test(line))return;
+    if(line.length<2)return;
+    // try to parse tabular data (tab, multiple spaces, or | separated)
+    let parts=line.split(/\t|\|/).map(s=>s.trim()).filter(s=>s);
+    if(parts.length<2)parts=line.split(/\s{2,}/).map(s=>s.trim()).filter(s=>s);
+    if(parts.length>=2){
+      const item={name:"",spec:"",qty:1,material:"",note:""};
+      // first non-number part is likely the name
+      let qtyFound=false;
+      parts.forEach((part,pi)=>{
+        const isNum=/^\d+$/.test(part);
+        const hasMat=matKeywords.some(k=>part.toUpperCase().includes(k.toUpperCase()));
+        if(isNum&&!qtyFound&&pi>0){item.qty=parseInt(part);qtyFound=true;}
+        else if(hasMat&&!item.material){item.material=part;}
+        else if(!item.name){item.name=part;}
+        else if(!item.spec&&part.match(/[\d×xX*\-\.]+/)){item.spec=part;}
+        else{item.note+=(item.note?" ":"")+part;}
+      });
+      if(item.name)parsed.push(item);
+    }else if(line.length>2){
+      // single column - treat entire line as item name, try extract qty
+      const qMatch=line.match(/[×xX*]\s*(\d+)/);
+      const qty=qMatch?parseInt(qMatch[1]):1;
+      const name=line.replace(/[×xX*]\s*\d+/,"").trim();
+      if(name)parsed.push({name,spec:"",qty,material:"",note:""});
+    }
+  });
+  if(parsed.length===0){
+    showToast("無法解析BOM項目，請手動編輯辨識文字後重試","error");
+    return;
+  }
+  $("ocr-parsed").style.display="block";
+  $("ocr-parsed-list").innerHTML=`
+    <div style="overflow-x:auto"><table style="width:100%;font-size:12px;border-collapse:collapse">
+      <tr style="color:var(--muted);border-bottom:1px solid var(--border2)"><th style="padding:6px">#</th><th style="padding:6px;text-align:left">品名</th><th style="padding:6px">規格</th><th style="padding:6px">數量</th><th style="padding:6px">材質</th><th style="padding:6px;text-align:left">備註</th><th style="padding:6px">移除</th></tr>
+      ${parsed.map((b,i)=>`<tr style="border-bottom:1px solid var(--border)" class="ocr-bom-row">
+        <td style="padding:6px">${i+1}</td>
+        <td style="padding:6px"><input class="inp ocr-b-name" value="${esc(b.name)}" style="font-size:11px"></td>
+        <td style="padding:6px"><input class="inp ocr-b-spec" value="${esc(b.spec)}" style="font-size:11px;width:80px"></td>
+        <td style="padding:6px"><input class="inp ocr-b-qty" type="number" value="${b.qty}" style="font-size:11px;width:50px;text-align:center"></td>
+        <td style="padding:6px"><input class="inp ocr-b-mat" value="${esc(b.material)}" style="font-size:11px;width:70px"></td>
+        <td style="padding:6px"><input class="inp ocr-b-note" value="${esc(b.note)}" style="font-size:11px"></td>
+        <td style="padding:6px;text-align:center"><button class="icon-btn" style="color:#EF4444" onclick="this.closest('tr').remove()">✕</button></td>
+      </tr>`).join("")}
+    </table></div>
+    <div style="font-size:12px;color:var(--muted);margin-top:8px">共解析 ${parsed.length} 項，請確認後匯入。可直接在表格中修改。</div>`;
+  showToast(`成功解析 ${parsed.length} 項 BOM`);
+}
+async function confirmOcrImport(){
+  const projectId=$("ocr-project")?.value||ocrTargetProject;
+  if(!projectId){showToast("請選擇匯入的案件","error");return;}
+  const rows=document.querySelectorAll(".ocr-bom-row");
+  const newBom=[];
+  rows.forEach(row=>{
+    const name=row.querySelector(".ocr-b-name")?.value||"";
+    if(!name)return;
+    newBom.push({name,spec:row.querySelector(".ocr-b-spec")?.value||"",qty:parseInt(row.querySelector(".ocr-b-qty")?.value)||1,material:row.querySelector(".ocr-b-mat")?.value||"",unit:"件",note:row.querySelector(".ocr-b-note")?.value||"",photo:""});
+  });
+  if(newBom.length===0){showToast("沒有可匯入的項目","error");return;}
+  const p=state.designProjects.find(x=>x.id===projectId);
+  const existingBom=p?.bom||[];
+  const mergedBom=existingBom.concat(newBom);
+  try{
+    await db.collection("designProjects").doc(projectId).set({bom:mergedBom},{merge:true});
+    pushNotif(`${projectId} BOM 已匯入 ${newBom.length} 項`,"success");
+    showToast(`成功匯入 ${newBom.length} 項至 ${projectId}`);
+    closeModal();
+  }catch(e){showToast("匯入失敗","error");}
 }
 // ─── END DESIGN ─────────────────────────────────────────────
 // ─── END ACCOUNTING ─────────────────────────────────────────
