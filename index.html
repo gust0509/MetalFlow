@@ -258,19 +258,20 @@ const STAGES=[
 const STAGE_IDS=STAGES.map(s=>s.id);
 const STATUS_COLOR={"待處理":"#F59E0B","進行中":"#3B82F6","完成":"#22C55E","延誤":"#EF4444"};
 const TABS=[
-  {id:"dashboard",label:"儀表板",icon:"◈",roles:["admin","manager","operator","floor","sales","purchaser"]},
+  {id:"dashboard",label:"儀表板",icon:"◈",roles:["admin","manager","operator","floor","sales","purchaser","designer"]},
   {id:"orders",label:"工單",icon:"⊞",roles:["admin","manager","operator","floor"]},
   {id:"receipts",label:"簽收單",icon:"📋",roles:["admin","manager","operator","floor","sales"]},
   {id:"accounting",label:"會計",icon:"💰",roles:["admin","manager"]},
   {id:"purchase",label:"採購",icon:"🛒",roles:["admin","manager","purchaser","operator","floor","sales"]},
   {id:"warehouse",label:"倉管",icon:"🏭",roles:["admin","manager","purchaser"]},
+  {id:"design",label:"設計",icon:"✏️",roles:["admin","manager","designer"]},
   {id:"flow",label:"看板",icon:"⟳",roles:["admin","manager","operator","floor"]},
   {id:"quotes",label:"報價",icon:"¥",roles:["admin","manager","sales"]},
   {id:"service",label:"售服",icon:"🔧",roles:["admin","manager","operator","floor","sales"]},
   {id:"line",label:"LINE",icon:"◉",roles:["admin","manager"]},
   {id:"analytics",label:"分析",icon:"◎",roles:["admin","manager"]},
   {id:"users",label:"使用者",icon:"👥",roles:["admin"]},
-  {id:"notif",label:"通知",icon:"◆",roles:["admin","manager","operator","floor","sales","purchaser"]},
+  {id:"notif",label:"通知",icon:"◆",roles:["admin","manager","operator","floor","sales","purchaser","designer"]},
 ];
 let state={
   tab:"dashboard",
@@ -285,11 +286,13 @@ let state={
   purchaseOrders:[],
   inventory:[],
   stockLogs:[],
+  designProjects:[],
   lineLog:[],
   notifications:[],
   acctTab:"daily",acctDateFilter:"",
   purchaseTab:"orders",
   whTab:"stock",
+  designTab:"projects",
   unread:0,
   orderSearch:"",orderStageFilter:"all",orderPriorityFilter:"all",
   quoteFormOpen:false,
@@ -562,7 +565,7 @@ function updateUserDisplay(){
   if(currentUser){
     ava.textContent=(currentUser.email||"U").charAt(0).toUpperCase();
     name.textContent=currentUser.email.split("@")[0]||"User";
-    const roleLabel={admin:"系統管理員",manager:"主管",operator:"操作員",floor:"現場人員",sales:"業務",purchaser:"採購人員"}[currentUserRole]||"使用者";
+    const roleLabel={admin:"系統管理員",manager:"主管",operator:"操作員",floor:"現場人員",sales:"業務",purchaser:"採購人員",designer:"設計師"}[currentUserRole]||"使用者";
     role.textContent=roleLabel;
   }
 }
@@ -638,6 +641,17 @@ async function subscribeToFirestore(){
       render();
     }, err=>console.error("訂閱收付款失敗:",err));
 
+  db.collection("designProjects")
+    .onSnapshot(snap=>{
+      state.designProjects=snap.docs.map(d=>({...d.data(),id:d.id}))
+        .sort((a,b)=>{
+          const aTime=(a.createdTime?.toDate?.()?.getTime?.())||0;
+          const bTime=(b.createdTime?.toDate?.()?.getTime?.())||0;
+          return bTime-aTime;
+        });
+      render();
+    }, err=>console.error("訂閱設計案件失敗:",err));
+
   db.collection("inventory")
     .onSnapshot(snap=>{
       state.inventory=snap.docs.map(d=>({...d.data(),id:d.id}));
@@ -703,6 +717,7 @@ function render(){
   else if(state.tab==="accounting") c.innerHTML=renderAccounting();
   else if(state.tab==="purchase") c.innerHTML=renderPurchase();
   else if(state.tab==="warehouse") c.innerHTML=renderWarehouse();
+  else if(state.tab==="design") c.innerHTML=renderDesign();
   else if(state.tab==="line") c.innerHTML=renderLine();
   else if(state.tab==="analytics") c.innerHTML=renderAnalytics();
   else if(state.tab==="users") c.innerHTML=renderUsers();
@@ -718,7 +733,7 @@ function renderSideNav(){
     </button>`).join("");
 }
 function renderBottomNav(){
-  const visibleTabs=TABS.slice(0,10).filter(t=>t.roles.includes(currentUserRole));
+  const visibleTabs=TABS.slice(0,11).filter(t=>t.roles.includes(currentUserRole));
   $("bottom-nav").innerHTML=visibleTabs.map(t=>`
     <button class="bot-btn${state.tab===t.id?" active":""}" onclick="setTab('${t.id}')">
       <span class="bot-ico">${t.icon}${t.id==="line"&&state.lineLog.length>0?'<span class="bot-dot"></span>':""}</span>
@@ -2385,6 +2400,392 @@ function renderLedger(){
   </div>`;
 }
 // ─── END WAREHOUSE ──────────────────────────────────────────
+// ─── 設計系統 ───────────────────────────────────────────────
+const DSG_STAGES=[
+  {id:"3d",label:"3D建模",icon:"🧊",color:"#8B5CF6"},
+  {id:"2d",label:"2D出圖",icon:"📐",color:"#3B82F6"},
+  {id:"split",label:"拆圖",icon:"✂️",color:"#F59E0B"},
+  {id:"review",label:"校圖",icon:"🔍",color:"#06C755"},
+  {id:"release",label:"發圖",icon:"📤",color:"#22C55E"},
+  {id:"bom",label:"BOM表",icon:"📋",color:"#EF4444"}
+];
+const DSG_STATUS={"待分配":"#64748B","進行中":"#3B82F6","審核中":"#F59E0B","已完成":"#22C55E","暫停":"#EF4444"};
+const DSG_TOOLS=["SolidWorks","AutoCAD","Inventor","Creo","CATIA","Fusion360","其他"];
+function renderDesign(){
+  const tabs=[{id:"projects",label:"📁 案件總覽"},{id:"timeline",label:"⏱ 時間表"},{id:"report",label:"📊 統計報表"}];
+  const tabBar=tabs.map(t=>`<button class="chip${state.designTab===t.id?" on":""}" onclick="state.designTab='${t.id}';renderContent()">${t.label}</button>`).join("");
+  let content="";
+  if(state.designTab==="projects") content=renderDesignProjects();
+  else if(state.designTab==="timeline") content=renderDesignTimeline();
+  else if(state.designTab==="report") content=renderDesignReport();
+  return `<div class="card"><div style="display:flex;gap:8px;flex-wrap:wrap">${tabBar}</div></div>${content}`;
+}
+function renderDesignProjects(){
+  const list=state.designProjects;
+  const active=list.filter(p=>p.status==="進行中").length;
+  const reviewing=list.filter(p=>p.status==="審核中").length;
+  const done=list.filter(p=>p.status==="已完成").length;
+  return `
+  <div class="kpi-grid">
+    <div class="kpi-card" style="border-top:3px solid #3B82F6"><div class="kpi-label">進行中</div><div class="kpi-val" style="color:#3B82F6">${active}</div></div>
+    <div class="kpi-card" style="border-top:3px solid #F59E0B"><div class="kpi-label">審核中</div><div class="kpi-val" style="color:#F59E0B">${reviewing}</div></div>
+    <div class="kpi-card" style="border-top:3px solid #22C55E"><div class="kpi-label">已完成</div><div class="kpi-val" style="color:#22C55E">${done}</div></div>
+    <div class="kpi-card" style="border-top:3px solid #8B5CF6"><div class="kpi-label">總案件</div><div class="kpi-val" style="color:#8B5CF6">${list.length}</div></div>
+  </div>
+  <div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <div class="card-title" style="margin:0">📁 設計案件</div>
+      <button class="accent-btn" onclick="openNewDesignModal()">＋ 新增案件</button>
+    </div>
+    ${list.length===0?'<div style="text-align:center;color:var(--muted);padding:20px">尚無設計案件</div>':""}
+    ${list.map(p=>{
+      const sc=DSG_STATUS[p.status]||"#64748B";
+      const stages=p.stages||{};
+      const completedStages=DSG_STAGES.filter(s=>stages[s.id]?.status==="完成").length;
+      const pct=Math.round(completedStages/DSG_STAGES.length*100);
+      const totalEstH=DSG_STAGES.reduce((s,st)=>s+(stages[st.id]?.estHours||0),0);
+      const totalActH=DSG_STAGES.reduce((s,st)=>s+(stages[st.id]?.actHours||0),0);
+      return `<div class="row-item slide-up">
+        <div style="flex:1;min-width:0">
+          <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+            <span class="wo-tag">${p.id}</span>
+            <span style="font-size:13px;font-weight:600">${esc(p.projectName)}</span>
+            <span class="pill" style="background:${sc}22;color:${sc};font-size:10px">${p.status}</span>
+            ${p.priority==="高"?'<span class="pill" style="background:#7F1D1D;color:#FCA5A5;font-size:10px">急件</span>':""}
+          </div>
+          <div style="font-size:11px;color:var(--muted);margin-top:3px">${esc(p.customer||"")} · 工單:${esc(p.orderId||"—")} · ${esc(p.designer||"未指派")} · ${esc(p.tool||"")}</div>
+          <div style="display:flex;gap:4px;margin-top:5px;align-items:center">
+            ${DSG_STAGES.map(st=>{const ss=stages[st.id];const c=ss?.status==="完成"?st.color:ss?.status==="進行中"?"#F59E0B":"#1E293B";return `<div title="${st.label}: ${ss?.status||"待開始"}" style="width:20px;height:6px;border-radius:3px;background:${c}"></div>`;}).join("")}
+            <span style="font-size:10px;color:var(--muted);margin-left:4px">${pct}%</span>
+          </div>
+          <div style="font-size:10px;color:var(--muted);margin-top:3px">預估 ${totalEstH}h / 實際 ${totalActH}h${totalActH>totalEstH?` <span style="color:#EF4444">(超時${totalActH-totalEstH}h)</span>`:""}</div>
+        </div>
+        <div style="display:flex;gap:4px;flex-shrink:0">
+          <button class="icon-btn" onclick="openViewDesignModal('${p.id}')">👁</button>
+          <button class="icon-btn" style="color:#3B82F6" onclick="openEditDesignModal('${p.id}')">✏️</button>
+          <button class="adv-btn" onclick="openDesignStageModal('${p.id}')">⏱</button>
+        </div>
+      </div>`;
+    }).join("")}
+  </div>`;
+}
+function openNewDesignModal(){
+  const orderOpts=state.orders.map(o=>`<option value="${o.id}">${o.id} — ${esc(o.customer)} (${esc(o.part)})</option>`).join("");
+  const designerOpts=state.users.filter(u=>u.role==="designer"||u.role==="admin"||u.role==="manager").map(u=>`<option value="${esc(u.email)}">${esc(u.email)}</option>`).join("");
+  const defaultStages={};
+  DSG_STAGES.forEach(s=>{defaultStages[s.id]={status:"待開始",estHours:0,actHours:0,startTime:"",endTime:"",note:""};});
+  $("modal-box").innerHTML=`
+    <div class="modal-head"><div class="modal-title">✏️ 新增設計案件</div><button class="close-btn" onclick="closeModal()">✕</button></div>
+    <div class="form-grid">
+      <div><label class="lbl">案件名稱*</label><input class="inp" id="dsg-name"></div>
+      <div><label class="lbl">客戶名稱</label><input class="inp" id="dsg-customer"></div>
+    </div>
+    <div class="form-grid">
+      <div><label class="lbl">關聯工單</label><select class="inp" id="dsg-orderId" onchange="autoFillDesign()"><option value="">— 無 —</option>${orderOpts}</select></div>
+      <div><label class="lbl">設計工具</label><select class="inp" id="dsg-tool">${DSG_TOOLS.map(t=>`<option>${t}</option>`).join("")}</select></div>
+    </div>
+    <div class="form-grid">
+      <div><label class="lbl">指派設計師</label><select class="inp" id="dsg-designer"><option value="">— 待分配 —</option>${designerOpts}</select></div>
+      <div><label class="lbl">優先等級</label><select class="inp" id="dsg-priority"><option>中</option><option>高</option><option>低</option></select></div>
+    </div>
+    <div class="form-grid">
+      <div><label class="lbl">預計完成日</label><input class="inp" type="date" id="dsg-deadline"></div>
+      <div><label class="lbl">圖面數量(張)</label><input class="inp" type="number" id="dsg-drawCount"></div>
+    </div>
+    <div style="margin-bottom:10px">
+      <div class="lbl">各階段預估時數 (h)</div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:6px">
+        ${DSG_STAGES.map(s=>`<div style="display:flex;align-items:center;gap:4px"><span style="font-size:11px;min-width:55px">${s.icon}${s.label}</span><input class="inp dsg-est-${s.id}" type="number" value="0" style="width:60px;text-align:center"></div>`).join("")}
+      </div>
+    </div>
+    <div style="margin-bottom:14px"><label class="lbl">備註</label><textarea class="inp" id="dsg-note" rows="2" style="resize:vertical"></textarea></div>
+    ${photoInput("dsg-photos")}
+    <div style="display:flex;gap:10px">
+      <button class="accent-btn" style="flex:1;padding:11px" onclick="submitNewDesign()">📁 建立案件</button>
+      <button class="icon-btn" style="flex:1;padding:11px;text-align:center" onclick="closeModal()">取消</button>
+    </div>`;
+  $("modal-wrap").classList.add("show");
+}
+function autoFillDesign(){
+  const oid=$("dsg-orderId")?.value;if(!oid)return;
+  const o=state.orders.find(x=>x.id===oid);if(!o)return;
+  if($("dsg-customer"))$("dsg-customer").value=o.customer||"";
+  if($("dsg-name")&&!$("dsg-name").value)$("dsg-name").value=o.part||"";
+}
+async function submitNewDesign(){
+  const g=id=>$(id)?.value||"";
+  const projectName=g("dsg-name");
+  if(!projectName){showToast("請填案件名稱","error");return;}
+  const dsgId=`DSG-${String(Date.now()).slice(-6)}`;
+  const stages={};
+  DSG_STAGES.forEach(s=>{
+    const est=parseFloat(document.querySelector(`.dsg-est-${s.id}`)?.value)||0;
+    stages[s.id]={status:"待開始",estHours:est,actHours:0,startTime:"",endTime:"",note:""};
+  });
+  const photos=JSON.parse(g("dsg-photos")||"[]");
+  const data={projectName,customer:g("dsg-customer"),orderId:g("dsg-orderId"),tool:g("dsg-tool"),designer:g("dsg-designer"),priority:g("dsg-priority"),deadline:g("dsg-deadline"),drawCount:parseInt(g("dsg-drawCount"))||0,stages,bom:[],photos,status:g("dsg-designer")?"進行中":"待分配",note:g("dsg-note"),createdTime:firebase.firestore.Timestamp.now(),createdBy:currentUser.uid};
+  try{
+    await db.collection("designProjects").doc(dsgId).set(data);
+    pushNotif(`設計案件 ${dsgId} ${projectName} 已建立`,"success");showToast("案件已建立");closeModal();
+  }catch(e){showToast("建立失敗","error");}
+}
+function openViewDesignModal(id){
+  const p=state.designProjects.find(x=>x.id===id);if(!p)return;
+  const d=p.createdTime?.toDate?.();const ds=d?d.toLocaleString("zh-TW"):"—";
+  const stages=p.stages||{};
+  const totalEstH=DSG_STAGES.reduce((s,st)=>s+(stages[st.id]?.estHours||0),0);
+  const totalActH=DSG_STAGES.reduce((s,st)=>s+(stages[st.id]?.actHours||0),0);
+  const completedStages=DSG_STAGES.filter(s=>stages[s.id]?.status==="完成").length;
+  const pct=Math.round(completedStages/DSG_STAGES.length*100);
+  $("modal-box").innerHTML=`
+    <div class="modal-head"><div class="modal-title">✏️ 設計案件 ${p.id}</div><button class="close-btn" onclick="closeModal()">✕</button></div>
+    <div style="text-align:center;margin-bottom:14px"><span class="pill" style="background:${(DSG_STATUS[p.status]||"#64748B")}22;color:${DSG_STATUS[p.status]||"#64748B"};font-size:14px;padding:6px 16px">${p.status}</span><span style="margin-left:8px;font-size:14px;font-weight:700;color:#3B82F6">${pct}%</span></div>
+    ${[["案件編號",p.id],["案件名稱",p.projectName],["客戶",p.customer||"—"],["關聯工單",p.orderId||"—"],["設計工具",p.tool||"—"],["設計師",p.designer||"未指派"],["優先",p.priority||"中"],["預計完成",p.deadline||"—"],["圖面數量",p.drawCount?p.drawCount+"張":"—"],["建立時間",ds]].map(([k,v])=>`<div class="detail-row"><span class="detail-key">${k}</span><span class="detail-val">${esc(String(v))}</span></div>`).join("")}
+    <div style="margin-top:14px"><div class="lbl">各階段進度與時數</div>
+      <div style="overflow-x:auto;margin-top:6px"><table style="width:100%;font-size:12px;border-collapse:collapse">
+        <tr style="color:var(--muted);border-bottom:1px solid var(--border2)"><th style="padding:6px;text-align:left">階段</th><th style="padding:6px">狀態</th><th style="padding:6px">預估(h)</th><th style="padding:6px">實際(h)</th><th style="padding:6px">差異</th></tr>
+        ${DSG_STAGES.map(st=>{
+          const ss=stages[st.id]||{};
+          const diff=(ss.actHours||0)-(ss.estHours||0);
+          const stColor=ss.status==="完成"?"#22C55E":ss.status==="進行中"?"#3B82F6":"#64748B";
+          return `<tr style="border-bottom:1px solid var(--border)">
+            <td style="padding:6px">${st.icon} ${st.label}</td>
+            <td style="padding:6px;text-align:center;color:${stColor}">${ss.status||"待開始"}</td>
+            <td style="padding:6px;text-align:center">${ss.estHours||0}</td>
+            <td style="padding:6px;text-align:center">${ss.actHours||0}</td>
+            <td style="padding:6px;text-align:center;color:${diff>0?"#EF4444":diff<0?"#22C55E":"var(--muted)"}">${diff>0?"+"+diff:diff}</td>
+          </tr>`;
+        }).join("")}
+        <tr style="font-weight:700;border-top:2px solid var(--border2)"><td style="padding:6px">合計</td><td></td><td style="padding:6px;text-align:center">${totalEstH}</td><td style="padding:6px;text-align:center">${totalActH}</td><td style="padding:6px;text-align:center;color:${totalActH>totalEstH?"#EF4444":"#22C55E"}">${totalActH>totalEstH?"+"+(totalActH-totalEstH):totalActH-totalEstH}</td></tr>
+      </table></div>
+    </div>
+    ${(p.bom&&p.bom.length)?`<div style="margin-top:14px"><div class="lbl">📋 BOM 材料清單 (${p.bom.length})</div>
+      <div style="overflow-x:auto;margin-top:6px"><table style="width:100%;font-size:12px;border-collapse:collapse">
+        <tr style="color:var(--muted);border-bottom:1px solid var(--border2)"><th style="padding:6px;text-align:left">品名</th><th style="padding:6px">規格</th><th style="padding:6px">數量</th><th style="padding:6px">材質</th><th style="padding:6px">備註</th></tr>
+        ${p.bom.map(b=>`<tr style="border-bottom:1px solid var(--border)"><td style="padding:6px">${esc(b.name)}</td><td style="padding:6px;text-align:center">${esc(b.spec||"")}</td><td style="padding:6px;text-align:center">${b.qty||0}</td><td style="padding:6px;text-align:center">${esc(b.material||"")}</td><td style="padding:6px">${esc(b.note||"")}</td></tr>`).join("")}
+      </table></div>
+    </div>`:""}
+    ${renderPhotos(p.photos)}
+    <button class="icon-btn" style="width:100%;padding:10px;margin-top:14px;text-align:center" onclick="closeModal()">關閉</button>`;
+  $("modal-wrap").classList.add("show");
+}
+function openEditDesignModal(id){
+  const p=state.designProjects.find(x=>x.id===id);if(!p)return;
+  const designerOpts=state.users.filter(u=>u.role==="designer"||u.role==="admin"||u.role==="manager").map(u=>`<option value="${esc(u.email)}"${p.designer===u.email?" selected":""}>${esc(u.email)}</option>`).join("");
+  $("modal-box").innerHTML=`
+    <div class="modal-head"><div class="modal-title">✏️ 編輯案件 ${p.id}</div><button class="close-btn" onclick="closeModal()">✕</button></div>
+    <div class="form-grid">
+      <div><label class="lbl">案件名稱*</label><input class="inp" id="edsg-name" value="${esc(p.projectName)}"></div>
+      <div><label class="lbl">客戶</label><input class="inp" id="edsg-customer" value="${esc(p.customer||"")}"></div>
+    </div>
+    <div class="form-grid">
+      <div><label class="lbl">關聯工單</label><input class="inp" id="edsg-orderId" value="${esc(p.orderId||"")}"></div>
+      <div><label class="lbl">設計工具</label><select class="inp" id="edsg-tool">${DSG_TOOLS.map(t=>`<option${p.tool===t?" selected":""}>${t}</option>`).join("")}</select></div>
+    </div>
+    <div class="form-grid">
+      <div><label class="lbl">指派設計師</label><select class="inp" id="edsg-designer"><option value="">— 待分配 —</option>${designerOpts}</select></div>
+      <div><label class="lbl">狀態</label><select class="inp" id="edsg-status">${Object.keys(DSG_STATUS).map(s=>`<option${p.status===s?" selected":""}>${s}</option>`).join("")}</select></div>
+    </div>
+    <div class="form-grid">
+      <div><label class="lbl">預計完成日</label><input class="inp" type="date" id="edsg-deadline" value="${p.deadline||""}"></div>
+      <div><label class="lbl">圖面數量</label><input class="inp" type="number" id="edsg-drawCount" value="${p.drawCount||""}"></div>
+    </div>
+    <div style="margin-bottom:14px"><label class="lbl">備註</label><textarea class="inp" id="edsg-note" rows="2" style="resize:vertical">${esc(p.note||"")}</textarea></div>
+    ${photoInput("edsg-photos")}
+    <div style="display:flex;gap:10px">
+      <button class="accent-btn" style="flex:1;padding:11px" onclick="submitEditDesign('${p.id}')">💾 儲存</button>
+      <button class="icon-btn" style="flex:1;padding:11px;text-align:center" onclick="closeModal()">取消</button>
+    </div>
+    ${currentUserRole==="admin"?`<button style="background:#7F1D1D;color:#FCA5A5;border:1px solid #991B1B;border-radius:10px;padding:10px;width:100%;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;margin-top:10px" onclick="deleteDesign('${p.id}')">🗑️ 刪除</button>`:""}`;
+  $("modal-wrap").classList.add("show");
+  setTimeout(()=>{
+    if(p.photos&&p.photos.length){const el=$("edsg-photos");if(el){el.value=JSON.stringify(p.photos);renderPhotoPreview("edsg-photos",p.photos);}}
+  },50);
+}
+async function submitEditDesign(id){
+  const g=fid=>$(fid)?.value||"";
+  const projectName=g("edsg-name");
+  if(!projectName){showToast("請填案件名稱","error");return;}
+  const photos=JSON.parse(g("edsg-photos")||"[]");
+  const updates={projectName,customer:g("edsg-customer"),orderId:g("edsg-orderId"),tool:g("edsg-tool"),designer:g("edsg-designer"),status:g("edsg-status"),deadline:g("edsg-deadline"),drawCount:parseInt(g("edsg-drawCount"))||0,note:g("edsg-note"),photos};
+  try{
+    await db.collection("designProjects").doc(id).set(updates,{merge:true});
+    pushNotif(`設計案件 ${id} 已更新`,"success");showToast("已更新");closeModal();
+  }catch(e){showToast("更新失敗","error");}
+}
+async function deleteDesign(id){
+  if(!confirm(`確定要刪除設計案件 ${id}？`))return;
+  try{await db.collection("designProjects").doc(id).delete();showToast("已刪除");closeModal();}catch(e){showToast("刪除失敗","error");}
+}
+// ─── 階段時間管理 ───────────────────────────────────────────
+function openDesignStageModal(id){
+  const p=state.designProjects.find(x=>x.id===id);if(!p)return;
+  const stages=p.stages||{};
+  $("modal-box").innerHTML=`
+    <div class="modal-head"><div class="modal-title">⏱ 時間管理 ${p.id}</div><button class="close-btn" onclick="closeModal()">✕</button></div>
+    <div style="font-size:13px;font-weight:600;margin-bottom:10px">${esc(p.projectName)} · ${esc(p.tool||"")}</div>
+    <div id="dsg-stage-list">
+      ${DSG_STAGES.map(st=>{
+        const ss=stages[st.id]||{};
+        const stOpts=["待開始","進行中","完成"].map(s=>`<option${ss.status===s?" selected":""}>${s}</option>`).join("");
+        return `<div style="background:#0F172A;border-radius:10px;padding:12px;margin-bottom:8px;border-left:3px solid ${st.color}" data-stage="${st.id}">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+            <span style="font-weight:700;font-size:13px">${st.icon} ${st.label}</span>
+            <select class="inp dss-status" style="width:100px;font-size:11px">${stOpts}</select>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:6px">
+            <div><label class="lbl" style="font-size:9px">預估(h)</label><input class="inp dss-est" type="number" value="${ss.estHours||0}" style="text-align:center"></div>
+            <div><label class="lbl" style="font-size:9px">實際(h)</label><input class="inp dss-act" type="number" value="${ss.actHours||0}" style="text-align:center"></div>
+            <div><label class="lbl" style="font-size:9px">開始日</label><input class="inp dss-start" type="date" value="${ss.startTime||""}"></div>
+            <div><label class="lbl" style="font-size:9px">完成日</label><input class="inp dss-end" type="date" value="${ss.endTime||""}"></div>
+          </div>
+          <div style="margin-top:6px"><input class="inp dss-note" placeholder="備註" value="${esc(ss.note||"")}" style="font-size:11px"></div>
+        </div>`;
+      }).join("")}
+    </div>
+    <div style="margin-top:10px;border-top:1px solid var(--border2);padding-top:14px">
+      <div class="lbl">📋 BOM 材料清單</div>
+      <div id="dsg-bom-list">
+        ${(p.bom||[]).map((b,i)=>`<div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr auto;gap:6px;margin-top:6px;align-items:end" class="bom-row">
+          <input class="inp bom-name" value="${esc(b.name)}" placeholder="品名">
+          <input class="inp bom-spec" value="${esc(b.spec||"")}" placeholder="規格">
+          <input class="inp bom-qty" type="number" value="${b.qty||0}" placeholder="數量">
+          <input class="inp bom-mat" value="${esc(b.material||"")}" placeholder="材質">
+          <button class="icon-btn" style="color:#EF4444;padding:8px" onclick="this.parentElement.remove()">✕</button>
+        </div>`).join("")}
+      </div>
+      <button class="icon-btn" style="width:100%;text-align:center;padding:8px;margin-top:6px;border:1px dashed var(--border2);border-radius:8px" onclick="addBomRow()">＋ 新增BOM項目</button>
+    </div>
+    <button class="accent-btn" style="width:100%;padding:12px;margin-top:14px" onclick="submitDesignStages('${p.id}')">💾 儲存所有變更</button>`;
+  $("modal-wrap").classList.add("show");
+}
+function addBomRow(){
+  const list=$("dsg-bom-list");if(!list)return;
+  const row=document.createElement("div");
+  row.className="bom-row";
+  row.style.cssText="display:grid;grid-template-columns:2fr 1fr 1fr 1fr auto;gap:6px;margin-top:6px;align-items:end";
+  row.innerHTML=`<input class="inp bom-name" placeholder="品名"><input class="inp bom-spec" placeholder="規格"><input class="inp bom-qty" type="number" placeholder="數量"><input class="inp bom-mat" placeholder="材質"><button class="icon-btn" style="color:#EF4444;padding:8px" onclick="this.parentElement.remove()">✕</button>`;
+  list.appendChild(row);
+}
+async function submitDesignStages(id){
+  const stageEls=document.querySelectorAll("#dsg-stage-list > div[data-stage]");
+  const stages={};
+  let allDone=true,anyActive=false;
+  stageEls.forEach(el=>{
+    const sid=el.dataset.stage;
+    const status=el.querySelector(".dss-status")?.value||"待開始";
+    if(status!=="完成")allDone=false;
+    if(status==="進行中")anyActive=true;
+    stages[sid]={status,estHours:parseFloat(el.querySelector(".dss-est")?.value)||0,actHours:parseFloat(el.querySelector(".dss-act")?.value)||0,startTime:el.querySelector(".dss-start")?.value||"",endTime:el.querySelector(".dss-end")?.value||"",note:el.querySelector(".dss-note")?.value||""};
+  });
+  const bomRows=document.querySelectorAll(".bom-row");
+  const bom=[];
+  bomRows.forEach(row=>{
+    const name=row.querySelector(".bom-name")?.value||"";
+    if(name)bom.push({name,spec:row.querySelector(".bom-spec")?.value||"",qty:parseInt(row.querySelector(".bom-qty")?.value)||0,material:row.querySelector(".bom-mat")?.value||""});
+  });
+  const projectStatus=allDone?"已完成":anyActive?"進行中":"待分配";
+  try{
+    await db.collection("designProjects").doc(id).set({stages,bom,status:projectStatus},{merge:true});
+    pushNotif(`設計案件 ${id} 階段已更新`,"success");showToast("已儲存");closeModal();
+  }catch(e){showToast("儲存失敗","error");}
+}
+// ─── 設計時間表 ─────────────────────────────────────────────
+function renderDesignTimeline(){
+  const active=state.designProjects.filter(p=>p.status!=="已完成");
+  return `
+  <div class="card">
+    <div class="card-title">⏱ 設計案件時間確認表</div>
+    ${active.length===0?'<div style="text-align:center;color:var(--muted);padding:20px">無進行中案件</div>':""}
+    <div style="overflow-x:auto">${active.length>0?`<table style="width:100%;font-size:11px;border-collapse:collapse">
+      <tr style="color:var(--muted);border-bottom:1px solid var(--border2)">
+        <th style="padding:6px;text-align:left;white-space:nowrap">案件</th>
+        <th style="padding:6px;text-align:left">客戶</th>
+        <th style="padding:6px">設計師</th>
+        <th style="padding:6px">截止</th>
+        ${DSG_STAGES.map(s=>`<th style="padding:6px;white-space:nowrap">${s.icon}</th>`).join("")}
+        <th style="padding:6px">預估</th>
+        <th style="padding:6px">實際</th>
+        <th style="padding:6px">進度</th>
+      </tr>
+      ${active.map(p=>{
+        const stages=p.stages||{};
+        const totalEst=DSG_STAGES.reduce((s,st)=>s+(stages[st.id]?.estHours||0),0);
+        const totalAct=DSG_STAGES.reduce((s,st)=>s+(stages[st.id]?.actHours||0),0);
+        const done=DSG_STAGES.filter(s=>stages[s.id]?.status==="完成").length;
+        const pct=Math.round(done/DSG_STAGES.length*100);
+        const deadlineD=p.deadline?daysLeft(p.deadline):999;
+        return `<tr style="border-bottom:1px solid var(--border)">
+          <td style="padding:6px;font-weight:600;white-space:nowrap"><span class="wo-tag" style="font-size:9px">${p.id}</span> ${esc(p.projectName).slice(0,10)}</td>
+          <td style="padding:6px">${esc(p.customer||"").slice(0,6)}</td>
+          <td style="padding:6px;text-align:center">${esc((p.designer||"").split("@")[0]||"—")}</td>
+          <td style="padding:6px;text-align:center;color:${deadlineD<0?"#EF4444":deadlineD<3?"#F59E0B":"var(--muted)"}">${p.deadline||"—"}</td>
+          ${DSG_STAGES.map(st=>{const ss=stages[st.id];const bg=ss?.status==="完成"?st.color+"44":ss?.status==="進行中"?"#F59E0B44":"transparent";return `<td style="padding:6px;text-align:center;background:${bg};border-radius:4px"><span style="font-size:10px">${ss?.actHours||0}h</span></td>`;}).join("")}
+          <td style="padding:6px;text-align:center">${totalEst}h</td>
+          <td style="padding:6px;text-align:center;color:${totalAct>totalEst?"#EF4444":"#22C55E"}">${totalAct}h</td>
+          <td style="padding:6px;text-align:center"><div class="bar-bg" style="height:6px;width:60px;display:inline-block;vertical-align:middle"><div class="bar-fill" style="height:6px;width:${pct}%;background:#3B82F6"></div></div> ${pct}%</td>
+        </tr>`;
+      }).join("")}
+    </table>`:""}</div>
+  </div>`;
+}
+// ─── 設計統計報表 ───────────────────────────────────────────
+function renderDesignReport(){
+  const all=state.designProjects;
+  const byDesigner={};
+  all.forEach(p=>{
+    const d=p.designer||"未指派";
+    if(!byDesigner[d])byDesigner[d]={count:0,done:0,totalEst:0,totalAct:0};
+    byDesigner[d].count++;
+    if(p.status==="已完成")byDesigner[d].done++;
+    const stages=p.stages||{};
+    DSG_STAGES.forEach(st=>{
+      byDesigner[d].totalEst+=(stages[st.id]?.estHours||0);
+      byDesigner[d].totalAct+=(stages[st.id]?.actHours||0);
+    });
+  });
+  const byTool={};all.forEach(p=>{const t=p.tool||"其他";if(!byTool[t])byTool[t]=0;byTool[t]++;});
+  const avgByStage={};
+  DSG_STAGES.forEach(st=>{
+    const completed=all.filter(p=>(p.stages||{})[st.id]?.status==="完成");
+    const totalH=completed.reduce((s,p)=>s+((p.stages||{})[st.id]?.actHours||0),0);
+    avgByStage[st.id]=completed.length?Math.round(totalH/completed.length*10)/10:0;
+  });
+  return `
+  <div class="card">
+    <div class="card-title">👤 設計師工作量統計</div>
+    <div style="overflow-x:auto"><table style="width:100%;font-size:12px;border-collapse:collapse">
+      <tr style="color:var(--muted);border-bottom:1px solid var(--border2)"><th style="padding:8px 6px;text-align:left">設計師</th><th style="padding:8px 6px">總案件</th><th style="padding:8px 6px">已完成</th><th style="padding:8px 6px">預估時數</th><th style="padding:8px 6px">實際時數</th><th style="padding:8px 6px">效率</th></tr>
+      ${Object.entries(byDesigner).map(([d,v])=>{
+        const eff=v.totalEst>0?Math.round(v.totalEst/v.totalAct*100):0;
+        return `<tr style="border-bottom:1px solid var(--border)">
+          <td style="padding:8px 6px;font-weight:600">${esc(d.split("@")[0])}</td>
+          <td style="padding:8px 6px;text-align:center">${v.count}</td>
+          <td style="padding:8px 6px;text-align:center;color:#22C55E">${v.done}</td>
+          <td style="padding:8px 6px;text-align:center">${v.totalEst}h</td>
+          <td style="padding:8px 6px;text-align:center">${v.totalAct}h</td>
+          <td style="padding:8px 6px;text-align:center;color:${eff>=100?"#22C55E":"#EF4444"}">${eff}%</td>
+        </tr>`;
+      }).join("")}
+    </table></div>
+  </div>
+  <div class="card">
+    <div class="card-title">📐 各階段平均耗時</div>
+    ${DSG_STAGES.map(st=>{
+      const avg=avgByStage[st.id];
+      const maxW=Math.max(...Object.values(avgByStage),1);
+      return `<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+        <span style="min-width:70px;font-size:12px">${st.icon} ${st.label}</span>
+        <div class="bar-bg" style="flex:1;height:18px"><div class="bar-fill" style="height:18px;width:${avg/maxW*100}%;background:${st.color};border-radius:4px;display:flex;align-items:center;padding-left:6px"><span style="font-size:10px;font-weight:700;color:#fff">${avg}h</span></div></div>
+      </div>`;
+    }).join("")}
+  </div>
+  <div class="card">
+    <div class="card-title">🛠 設計工具使用統計</div>
+    ${Object.entries(byTool).map(([t,c])=>`<div class="row-item"><span style="font-weight:600">${esc(t)}</span><span style="color:#3B82F6;font-weight:700">${c} 案</span></div>`).join("")}
+  </div>`;
+}
+// ─── END DESIGN ─────────────────────────────────────────────
 // ─── END ACCOUNTING ─────────────────────────────────────────
 function renderLine(){
   if(currentUserRole==="sales"||currentUserRole==="operator"||currentUserRole==="floor")return `<div class="card"><div style="padding:20px;text-align:center;color:var(--muted)">只有主管和管理員可以管理 LINE 通知。</div></div>`;
@@ -2513,6 +2914,7 @@ function renderUsers(){
               <option value="floor"${u.role==="floor"?" selected":""}>現場人員</option>
               <option value="sales"${u.role==="sales"?" selected":""}>業務</option>
               <option value="purchaser"${u.role==="purchaser"?" selected":""}>採購人員</option>
+              <option value="designer"${u.role==="designer"?" selected":""}>設計師</option>
             </select>
           </td>
           <td style="font-size:12px;color:var(--muted)">${u.created?new Date(u.created.toDate()).toLocaleDateString("zh-TW"):"-"}</td>
