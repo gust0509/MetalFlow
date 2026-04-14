@@ -263,6 +263,7 @@ const TABS=[
   {id:"receipts",label:"簽收單",icon:"📋",roles:["admin","manager","operator","floor","sales"]},
   {id:"accounting",label:"會計",icon:"💰",roles:["admin","manager"]},
   {id:"purchase",label:"採購",icon:"🛒",roles:["admin","manager","purchaser","operator","floor","sales"]},
+  {id:"warehouse",label:"倉管",icon:"🏭",roles:["admin","manager","purchaser"]},
   {id:"flow",label:"看板",icon:"⟳",roles:["admin","manager","operator","floor"]},
   {id:"quotes",label:"報價",icon:"¥",roles:["admin","manager","sales"]},
   {id:"service",label:"售服",icon:"🔧",roles:["admin","manager","operator","floor","sales"]},
@@ -282,10 +283,13 @@ let state={
   payments:[],
   suppliers:[],
   purchaseOrders:[],
+  inventory:[],
+  stockLogs:[],
   lineLog:[],
   notifications:[],
   acctTab:"daily",acctDateFilter:"",
   purchaseTab:"orders",
+  whTab:"stock",
   unread:0,
   orderSearch:"",orderStageFilter:"all",orderPriorityFilter:"all",
   quoteFormOpen:false,
@@ -634,6 +638,23 @@ async function subscribeToFirestore(){
       render();
     }, err=>console.error("訂閱收付款失敗:",err));
 
+  db.collection("inventory")
+    .onSnapshot(snap=>{
+      state.inventory=snap.docs.map(d=>({...d.data(),id:d.id}));
+      render();
+    }, err=>console.error("訂閱庫存失敗:",err));
+
+  db.collection("stockLogs")
+    .onSnapshot(snap=>{
+      state.stockLogs=snap.docs.map(d=>({...d.data(),id:d.id}))
+        .sort((a,b)=>{
+          const aTime=(a.createdTime?.toDate?.()?.getTime?.())||0;
+          const bTime=(b.createdTime?.toDate?.()?.getTime?.())||0;
+          return bTime-aTime;
+        });
+      render();
+    }, err=>console.error("訂閱庫存異動失敗:",err));
+
   db.collection("suppliers")
     .onSnapshot(snap=>{
       state.suppliers=snap.docs.map(d=>({...d.data(),id:d.id}));
@@ -681,6 +702,7 @@ function render(){
   else if(state.tab==="receipts") c.innerHTML=renderReceipts();
   else if(state.tab==="accounting") c.innerHTML=renderAccounting();
   else if(state.tab==="purchase") c.innerHTML=renderPurchase();
+  else if(state.tab==="warehouse") c.innerHTML=renderWarehouse();
   else if(state.tab==="line") c.innerHTML=renderLine();
   else if(state.tab==="analytics") c.innerHTML=renderAnalytics();
   else if(state.tab==="users") c.innerHTML=renderUsers();
@@ -696,7 +718,7 @@ function renderSideNav(){
     </button>`).join("");
 }
 function renderBottomNav(){
-  const visibleTabs=TABS.slice(0,9).filter(t=>t.roles.includes(currentUserRole));
+  const visibleTabs=TABS.slice(0,10).filter(t=>t.roles.includes(currentUserRole));
   $("bottom-nav").innerHTML=visibleTabs.map(t=>`
     <button class="bot-btn${state.tab===t.id?" active":""}" onclick="setTab('${t.id}')">
       <span class="bot-ico">${t.icon}${t.id==="line"&&state.lineLog.length>0?'<span class="bot-dot"></span>':""}</span>
@@ -2021,6 +2043,348 @@ function renderInventory(){
   </div>`;
 }
 // ─── END PURCHASING ─────────────────────────────────────────
+// ─── 倉管系統 ───────────────────────────────────────────────
+const INV_CATS=["原料","零件","成品","耗材","半成品","其他"];
+const STOCK_UNITS=["件","kg","公尺","捲","箱","組","片","支","包"];
+function renderWarehouse(){
+  const tabs=[{id:"stock",label:"📦 庫存總覽"},{id:"inout",label:"📥 入出庫"},{id:"check",label:"📋 盤點"},{id:"transfer",label:"🔄 調撥"},{id:"ledger",label:"📊 明細帳"}];
+  const tabBar=tabs.map(t=>`<button class="chip${state.whTab===t.id?" on":""}" onclick="state.whTab='${t.id}';renderContent()">${t.label}</button>`).join("");
+  let content="";
+  if(state.whTab==="stock") content=renderStock();
+  else if(state.whTab==="inout") content=renderInOut();
+  else if(state.whTab==="check") content=renderStockCheck();
+  else if(state.whTab==="transfer") content=renderTransfer();
+  else if(state.whTab==="ledger") content=renderLedger();
+  return `<div class="card"><div style="display:flex;gap:8px;flex-wrap:wrap">${tabBar}</div></div>${content}`;
+}
+function renderStock(){
+  const inv=state.inventory;
+  const lowStock=inv.filter(i=>i.safetyStock&&i.qty<=i.safetyStock);
+  const totalValue=inv.reduce((s,i)=>s+(i.qty||0)*(i.unitCost||0),0);
+  const byCat={};inv.forEach(i=>{const c=i.category||"其他";if(!byCat[c])byCat[c]=0;byCat[c]++;});
+  return `
+  <div class="kpi-grid">
+    <div class="kpi-card" style="border-top:3px solid #3B82F6"><div class="kpi-label">品項總數</div><div class="kpi-val" style="color:#3B82F6">${inv.length}</div></div>
+    <div class="kpi-card" style="border-top:3px solid #EF4444"><div class="kpi-label">低庫存警示</div><div class="kpi-val" style="color:#EF4444">${lowStock.length}</div></div>
+    <div class="kpi-card" style="border-top:3px solid #F59E0B"><div class="kpi-label">庫存總值</div><div class="kpi-val" style="color:#F59E0B;font-size:18px">$${Math.round(totalValue/1000)}K</div></div>
+    <div class="kpi-card" style="border-top:3px solid #22C55E"><div class="kpi-label">分類數</div><div class="kpi-val" style="color:#22C55E">${Object.keys(byCat).length}</div></div>
+  </div>
+  ${lowStock.length>0?`<div class="card" style="border:1px solid #7F1D1D">
+    <div class="card-title" style="color:#FCA5A5">🚨 低庫存警示</div>
+    ${lowStock.map(i=>`<div class="row-item"><div style="flex:1"><span style="font-weight:700">${esc(i.name)}</span> <span style="color:var(--muted);font-size:11px">(${esc(i.spec||"")})</span></div><div style="color:#EF4444;font-weight:700">剩 ${i.qty} ${esc(i.unit||"件")} / 安全量 ${i.safetyStock}</div></div>`).join("")}
+  </div>`:""}
+  <div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <div class="card-title" style="margin:0">📦 庫存品項</div>
+      <button class="accent-btn" onclick="openNewItemModal()">＋ 新增品項</button>
+    </div>
+    ${inv.length===0?'<div style="text-align:center;color:var(--muted);padding:20px">尚無庫存品項，請先新增</div>':""}
+    <div style="overflow-x:auto">${inv.length>0?`<table style="width:100%;font-size:12px;border-collapse:collapse">
+      <tr style="color:var(--muted);border-bottom:1px solid var(--border2)"><th style="padding:8px 6px;text-align:left">品名</th><th style="padding:8px 6px;text-align:left">規格</th><th style="padding:8px 6px">分類</th><th style="padding:8px 6px">庫存</th><th style="padding:8px 6px">安全量</th><th style="padding:8px 6px">單位成本</th><th style="padding:8px 6px">小計</th><th style="padding:8px 6px">操作</th></tr>
+      ${inv.map(i=>{
+        const low=i.safetyStock&&i.qty<=i.safetyStock;
+        return `<tr style="border-bottom:1px solid var(--border);${low?"background:#7F1D1D22":""}">
+          <td style="padding:8px 6px;font-weight:600">${esc(i.name)}</td>
+          <td style="padding:8px 6px">${esc(i.spec||"—")}</td>
+          <td style="padding:8px 6px;text-align:center"><span class="pill" style="background:#3B82F622;color:#3B82F6;font-size:10px">${esc(i.category||"其他")}</span></td>
+          <td style="padding:8px 6px;text-align:center;font-weight:700;color:${low?"#EF4444":"var(--text)"}">${i.qty||0} ${esc(i.unit||"件")}</td>
+          <td style="padding:8px 6px;text-align:center">${i.safetyStock||"—"}</td>
+          <td style="padding:8px 6px;text-align:center">$${Number(i.unitCost||0).toLocaleString()}</td>
+          <td style="padding:8px 6px;text-align:center;color:#F59E0B">$${((i.qty||0)*(i.unitCost||0)).toLocaleString()}</td>
+          <td style="padding:8px 6px;text-align:center"><button class="icon-btn" style="color:#3B82F6" onclick="openEditItemModal('${i.id}')">✏️</button></td>
+        </tr>`;
+      }).join("")}
+    </table>`:""}</div>
+  </div>`;
+}
+function openNewItemModal(){
+  $("modal-box").innerHTML=`
+    <div class="modal-head"><div class="modal-title">📦 新增庫存品項</div><button class="close-btn" onclick="closeModal()">✕</button></div>
+    <div class="form-grid">
+      <div><label class="lbl">品名*</label><input class="inp" id="inv-name"></div>
+      <div><label class="lbl">規格</label><input class="inp" id="inv-spec"></div>
+    </div>
+    <div class="form-grid">
+      <div><label class="lbl">分類</label><select class="inp" id="inv-cat">${INV_CATS.map(c=>`<option>${c}</option>`).join("")}</select></div>
+      <div><label class="lbl">單位</label><select class="inp" id="inv-unit">${STOCK_UNITS.map(u=>`<option>${u}</option>`).join("")}</select></div>
+    </div>
+    <div class="form-grid">
+      <div><label class="lbl">初始數量</label><input class="inp" type="number" id="inv-qty" value="0"></div>
+      <div><label class="lbl">安全庫存量</label><input class="inp" type="number" id="inv-safety" placeholder="低於此值會警示"></div>
+    </div>
+    <div class="form-grid">
+      <div><label class="lbl">單位成本(NT$)</label><input class="inp" type="number" id="inv-cost" value="0"></div>
+      <div><label class="lbl">供應商</label><select class="inp" id="inv-supplier"><option value="">— 無 —</option>${state.suppliers.map(s=>`<option value="${esc(s.name)}">${esc(s.name)}</option>`).join("")}</select></div>
+    </div>
+    <div style="margin-bottom:10px"><label class="lbl">存放位置</label><input class="inp" id="inv-location" placeholder="例: A區-01"></div>
+    <div style="margin-bottom:14px"><label class="lbl">備註</label><textarea class="inp" id="inv-note" rows="2" style="resize:vertical"></textarea></div>
+    <div style="display:flex;gap:10px">
+      <button class="accent-btn" style="flex:1;padding:11px" onclick="submitNewItem()">📦 建立品項</button>
+      <button class="icon-btn" style="flex:1;padding:11px;text-align:center" onclick="closeModal()">取消</button>
+    </div>`;
+  $("modal-wrap").classList.add("show");
+}
+async function submitNewItem(){
+  const g=id=>$(id)?.value||"";
+  const name=g("inv-name");
+  if(!name){showToast("請填品名","error");return;}
+  const invId=`ITM-${String(Date.now()).slice(-6)}`;
+  const qty=parseInt(g("inv-qty"))||0;
+  const data={name,spec:g("inv-spec"),category:g("inv-cat"),unit:g("inv-unit"),qty,safetyStock:parseInt(g("inv-safety"))||0,unitCost:parseFloat(g("inv-cost"))||0,supplier:g("inv-supplier"),location:g("inv-location"),note:g("inv-note"),createdTime:firebase.firestore.Timestamp.now(),createdBy:currentUser.uid};
+  try{
+    await db.collection("inventory").doc(invId).set(data);
+    if(qty>0){
+      await db.collection("stockLogs").doc(`SL-${Date.now()}`).set({itemId:invId,itemName:name,type:"入庫",reason:"初始建立",qty,balanceAfter:qty,createdTime:firebase.firestore.Timestamp.now(),createdBy:currentUser.uid});
+    }
+    pushNotif(`品項 ${name} 已建立`,"success");showToast("品項已建立");closeModal();
+  }catch(e){showToast("建立失敗","error");}
+}
+function openEditItemModal(id){
+  const i=state.inventory.find(x=>x.id===id);if(!i)return;
+  $("modal-box").innerHTML=`
+    <div class="modal-head"><div class="modal-title">✏️ 編輯品項 ${esc(i.name)}</div><button class="close-btn" onclick="closeModal()">✕</button></div>
+    <div class="form-grid">
+      <div><label class="lbl">品名*</label><input class="inp" id="einv-name" value="${esc(i.name)}"></div>
+      <div><label class="lbl">規格</label><input class="inp" id="einv-spec" value="${esc(i.spec||"")}"></div>
+    </div>
+    <div class="form-grid">
+      <div><label class="lbl">分類</label><select class="inp" id="einv-cat">${INV_CATS.map(c=>`<option${i.category===c?" selected":""}>${c}</option>`).join("")}</select></div>
+      <div><label class="lbl">單位</label><select class="inp" id="einv-unit">${STOCK_UNITS.map(u=>`<option${i.unit===u?" selected":""}>${u}</option>`).join("")}</select></div>
+    </div>
+    <div class="form-grid">
+      <div><label class="lbl">目前庫存</label><input class="inp" type="number" id="einv-qty" value="${i.qty||0}" disabled style="opacity:0.6"></div>
+      <div><label class="lbl">安全庫存量</label><input class="inp" type="number" id="einv-safety" value="${i.safetyStock||""}"></div>
+    </div>
+    <div class="form-grid">
+      <div><label class="lbl">單位成本(NT$)</label><input class="inp" type="number" id="einv-cost" value="${i.unitCost||0}"></div>
+      <div><label class="lbl">供應商</label><input class="inp" id="einv-supplier" value="${esc(i.supplier||"")}"></div>
+    </div>
+    <div style="margin-bottom:10px"><label class="lbl">存放位置</label><input class="inp" id="einv-location" value="${esc(i.location||"")}"></div>
+    <div style="margin-bottom:14px"><label class="lbl">備註</label><textarea class="inp" id="einv-note" rows="2" style="resize:vertical">${esc(i.note||"")}</textarea></div>
+    <div style="display:flex;gap:10px">
+      <button class="accent-btn" style="flex:1;padding:11px" onclick="submitEditItem('${i.id}')">💾 儲存</button>
+      <button class="icon-btn" style="flex:1;padding:11px;text-align:center" onclick="closeModal()">取消</button>
+    </div>
+    ${currentUserRole==="admin"?`<button style="background:#7F1D1D;color:#FCA5A5;border:1px solid #991B1B;border-radius:10px;padding:10px;width:100%;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;margin-top:10px" onclick="deleteItem('${i.id}')">🗑️ 刪除</button>`:""}`;
+  $("modal-wrap").classList.add("show");
+}
+async function submitEditItem(id){
+  const g=fid=>$(fid)?.value||"";
+  const name=g("einv-name");
+  if(!name){showToast("請填品名","error");return;}
+  const updates={name,spec:g("einv-spec"),category:g("einv-cat"),unit:g("einv-unit"),safetyStock:parseInt(g("einv-safety"))||0,unitCost:parseFloat(g("einv-cost"))||0,supplier:g("einv-supplier"),location:g("einv-location"),note:g("einv-note")};
+  try{
+    await db.collection("inventory").doc(id).set(updates,{merge:true});
+    showToast("品項已更新");closeModal();
+  }catch(e){showToast("更新失敗","error");}
+}
+async function deleteItem(id){
+  if(!confirm("確定要刪除此品項？"))return;
+  try{await db.collection("inventory").doc(id).delete();showToast("已刪除");closeModal();}catch(e){showToast("刪除失敗","error");}
+}
+// ─── 入出庫 ─────────────────────────────────────────────────
+function renderInOut(){
+  const logs=state.stockLogs.slice(0,50);
+  return `
+  <div class="card">
+    <div style="display:flex;gap:10px;margin-bottom:14px">
+      <button class="accent-btn" style="flex:1" onclick="openStockModal('入庫')">📥 入庫</button>
+      <button class="accent-btn" style="flex:1;background:#EF4444" onclick="openStockModal('出庫')">📤 出庫</button>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-title">📋 入出庫記錄</div>
+    ${logs.length===0?'<div style="text-align:center;color:var(--muted);padding:20px">尚無異動記錄</div>':""}
+    ${logs.map(l=>{
+      const d=l.createdTime?.toDate?.();const ds=d?d.toLocaleString("zh-TW"):"—";
+      const isIn=l.type==="入庫"||l.type==="盤盈"||l.type==="調入";
+      return `<div class="row-item">
+        <div style="flex:1;min-width:0">
+          <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+            <span class="pill" style="background:${isIn?"#22C55E22":"#EF444422"};color:${isIn?"#22C55E":"#EF4444"};font-size:10px">${l.type}</span>
+            <span style="font-weight:600;font-size:13px">${esc(l.itemName)}</span>
+          </div>
+          <div style="font-size:11px;color:var(--muted);margin-top:3px">${esc(l.reason||"")} · 結餘:${l.balanceAfter||0} · ${ds}</div>
+        </div>
+        <div style="font-size:16px;font-weight:800;color:${isIn?"#22C55E":"#EF4444"};flex-shrink:0">${isIn?"+":"−"}${Math.abs(l.qty)}</div>
+      </div>`;
+    }).join("")}
+  </div>`;
+}
+function openStockModal(type){
+  const isIn=type==="入庫";
+  const itemOpts=state.inventory.map(i=>`<option value="${i.id}">${esc(i.name)} (${esc(i.spec||"")}) — 庫存:${i.qty||0} ${esc(i.unit||"件")}</option>`).join("");
+  const orderOpts=state.orders.map(o=>`<option value="${o.id}">${o.id} — ${esc(o.customer)}</option>`).join("");
+  const poOpts=state.purchaseOrders.filter(p=>["已到貨","部分到貨","已核准","已下單"].includes(p.status)).map(p=>`<option value="${p.id}">${p.id} — ${esc(p.supplier)}</option>`).join("");
+  $("modal-box").innerHTML=`
+    <div class="modal-head"><div class="modal-title">${isIn?"📥 入庫":"📤 出庫"}</div><button class="close-btn" onclick="closeModal()">✕</button></div>
+    <div style="margin-bottom:10px"><label class="lbl">品項*</label><select class="inp" id="stk-item"><option value="">— 選擇品項 —</option>${itemOpts}</select></div>
+    <div class="form-grid">
+      <div><label class="lbl">數量*</label><input class="inp" type="number" id="stk-qty" min="1"></div>
+      <div><label class="lbl">原因</label><select class="inp" id="stk-reason">${isIn?'<option>採購入庫</option><option>退貨入庫</option><option>生產入庫</option><option>盤盈</option><option>其他</option>':'<option>生產領料</option><option>工單出貨</option><option>報廢</option><option>盤虧</option><option>其他</option>'}</select></div>
+    </div>
+    <div class="form-grid">
+      <div><label class="lbl">關聯工單</label><select class="inp" id="stk-order"><option value="">— 無 —</option>${orderOpts}</select></div>
+      ${isIn?`<div><label class="lbl">關聯採購單</label><select class="inp" id="stk-po"><option value="">— 無 —</option>${poOpts}</select></div>`:`<div></div>`}
+    </div>
+    <div style="margin-bottom:10px"><label class="lbl">備註</label><textarea class="inp" id="stk-note" rows="2" style="resize:vertical"></textarea></div>
+    ${photoInput("stk-photos")}
+    <div style="display:flex;gap:10px">
+      <button class="accent-btn" style="flex:1;padding:11px;${isIn?"":"background:#EF4444"}" onclick="submitStock('${type}')">✅ 確認${type}</button>
+      <button class="icon-btn" style="flex:1;padding:11px;text-align:center" onclick="closeModal()">取消</button>
+    </div>`;
+  $("modal-wrap").classList.add("show");
+}
+async function submitStock(type){
+  const g=id=>$(id)?.value||"";
+  const itemId=g("stk-item"),qty=parseInt(g("stk-qty"));
+  if(!itemId||!qty||qty<=0){showToast("請選擇品項和輸入數量","error");return;}
+  const item=state.inventory.find(x=>x.id===itemId);if(!item)return;
+  const isIn=type==="入庫";
+  const newQty=isIn?(item.qty||0)+qty:(item.qty||0)-qty;
+  if(newQty<0){showToast("出庫數量不可超過庫存","error");return;}
+  const photos=JSON.parse(g("stk-photos")||"[]");
+  const logId=`SL-${Date.now()}`;
+  try{
+    await db.collection("inventory").doc(itemId).set({qty:newQty},{merge:true});
+    await db.collection("stockLogs").doc(logId).set({itemId,itemName:item.name,type,qty:isIn?qty:-qty,balanceAfter:newQty,reason:g("stk-reason"),orderId:g("stk-order"),poId:g("stk-po")||"",note:g("stk-note"),photos,createdTime:firebase.firestore.Timestamp.now(),createdBy:currentUser.uid});
+    pushNotif(`${item.name} ${type} ${qty} ${item.unit||"件"}，結餘 ${newQty}`,"success");showToast(`${type}完成`);closeModal();
+  }catch(e){showToast(`${type}失敗`,"error");}
+}
+// ─── 盤點 ───────────────────────────────────────────────────
+function renderStockCheck(){
+  return `
+  <div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+      <div class="card-title" style="margin:0">📋 庫存盤點</div>
+      <button class="accent-btn" onclick="startStockCheck()">🔄 開始盤點</button>
+    </div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:14px">盤點會列出所有品項，逐一輸入實際數量後系統自動計算差異並產生異動記錄。</div>
+    <div id="stock-check-area"></div>
+  </div>`;
+}
+function startStockCheck(){
+  const area=$("stock-check-area");if(!area)return;
+  if(state.inventory.length===0){showToast("尚無品項可盤點","error");return;}
+  area.innerHTML=`
+    <div style="overflow-x:auto"><table style="width:100%;font-size:12px;border-collapse:collapse">
+      <tr style="color:var(--muted);border-bottom:1px solid var(--border2)"><th style="padding:8px 6px;text-align:left">品名</th><th style="padding:8px 6px">規格</th><th style="padding:8px 6px">帳面數量</th><th style="padding:8px 6px">實際數量</th><th style="padding:8px 6px">差異</th></tr>
+      ${state.inventory.map(i=>`<tr style="border-bottom:1px solid var(--border)" data-item-id="${i.id}" data-book-qty="${i.qty||0}">
+        <td style="padding:8px 6px;font-weight:600">${esc(i.name)}</td>
+        <td style="padding:8px 6px;text-align:center">${esc(i.spec||"—")}</td>
+        <td style="padding:8px 6px;text-align:center">${i.qty||0} ${esc(i.unit||"件")}</td>
+        <td style="padding:8px 6px;text-align:center"><input class="inp sc-actual" type="number" style="width:80px;text-align:center" value="${i.qty||0}" oninput="calcDiff(this)"></td>
+        <td style="padding:8px 6px;text-align:center;font-weight:700" class="sc-diff">0</td>
+      </tr>`).join("")}
+    </table></div>
+    <button class="accent-btn" style="width:100%;padding:12px;margin-top:14px" onclick="submitStockCheck()">✅ 提交盤點結果</button>`;
+}
+function calcDiff(el){
+  const row=el.closest("tr");
+  const book=parseInt(row.dataset.bookQty)||0;
+  const actual=parseInt(el.value)||0;
+  const diff=actual-book;
+  const cell=row.querySelector(".sc-diff");
+  cell.textContent=diff>0?`+${diff}`:String(diff);
+  cell.style.color=diff>0?"#22C55E":diff<0?"#EF4444":"var(--muted)";
+}
+async function submitStockCheck(){
+  const rows=document.querySelectorAll("#stock-check-area tr[data-item-id]");
+  let adjusted=0;
+  for(const row of rows){
+    const itemId=row.dataset.itemId;
+    const bookQty=parseInt(row.dataset.bookQty)||0;
+    const actual=parseInt(row.querySelector(".sc-actual")?.value)||0;
+    const diff=actual-bookQty;
+    if(diff===0)continue;
+    const item=state.inventory.find(x=>x.id===itemId);if(!item)continue;
+    try{
+      await db.collection("inventory").doc(itemId).set({qty:actual},{merge:true});
+      await db.collection("stockLogs").doc(`SL-${Date.now()}-${adjusted}`).set({itemId,itemName:item.name,type:diff>0?"盤盈":"盤虧",qty:diff,balanceAfter:actual,reason:"庫存盤點",createdTime:firebase.firestore.Timestamp.now(),createdBy:currentUser.uid});
+      adjusted++;
+    }catch(e){console.error("盤點更新失敗:",e);}
+  }
+  pushNotif(`盤點完成，${adjusted} 項品項已調整`,"success");
+  showToast(`盤點完成，${adjusted} 項已調整`);
+  renderContent();
+}
+// ─── 調撥 ───────────────────────────────────────────────────
+function renderTransfer(){
+  const transfers=state.stockLogs.filter(l=>l.type==="調出"||l.type==="調入");
+  return `
+  <div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <div class="card-title" style="margin:0">🔄 庫存調撥</div>
+      <button class="accent-btn" onclick="openTransferModal()">＋ 新增調撥</button>
+    </div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:14px">調撥為同品項不同存放位置之間的移動。系統會記錄調出和調入記錄。</div>
+    ${transfers.length===0?'<div style="text-align:center;color:var(--muted);padding:12px 0;font-size:13px">尚無調撥記錄</div>':""}
+    ${transfers.map(l=>{
+      const d=l.createdTime?.toDate?.();const ds=d?d.toLocaleString("zh-TW"):"—";
+      return `<div class="row-item"><div style="flex:1"><span class="pill" style="background:#8B5CF622;color:#8B5CF6;font-size:10px">${l.type}</span> <span style="font-weight:600">${esc(l.itemName)}</span> · ${esc(l.reason||"")} · <span style="color:var(--muted)">${ds}</span></div><div style="font-weight:700;color:#8B5CF6">${l.qty>0?"+":""}${l.qty}</div></div>`;
+    }).join("")}
+  </div>`;
+}
+function openTransferModal(){
+  const itemOpts=state.inventory.map(i=>`<option value="${i.id}">${esc(i.name)} (${esc(i.spec||"")}) — 庫存:${i.qty||0} · 位置:${esc(i.location||"未設定")}</option>`).join("");
+  $("modal-box").innerHTML=`
+    <div class="modal-head"><div class="modal-title">🔄 庫存調撥</div><button class="close-btn" onclick="closeModal()">✕</button></div>
+    <div style="margin-bottom:10px"><label class="lbl">品項*</label><select class="inp" id="tf-item"><option value="">— 選擇品項 —</option>${itemOpts}</select></div>
+    <div class="form-grid">
+      <div><label class="lbl">調撥數量*</label><input class="inp" type="number" id="tf-qty" min="1"></div>
+      <div><label class="lbl">目標位置*</label><input class="inp" id="tf-dest" placeholder="例: B區-03"></div>
+    </div>
+    <div style="margin-bottom:14px"><label class="lbl">原因</label><textarea class="inp" id="tf-reason" rows="2" style="resize:vertical" placeholder="調撥說明"></textarea></div>
+    <div style="display:flex;gap:10px">
+      <button class="accent-btn" style="flex:1;padding:11px" onclick="submitTransfer()">✅ 確認調撥</button>
+      <button class="icon-btn" style="flex:1;padding:11px;text-align:center" onclick="closeModal()">取消</button>
+    </div>`;
+  $("modal-wrap").classList.add("show");
+}
+async function submitTransfer(){
+  const g=id=>$(id)?.value||"";
+  const itemId=g("tf-item"),qty=parseInt(g("tf-qty")),dest=g("tf-dest");
+  if(!itemId||!qty||!dest){showToast("請填完所有欄位","error");return;}
+  const item=state.inventory.find(x=>x.id===itemId);if(!item)return;
+  if(qty>item.qty){showToast("調撥數量不可超過庫存","error");return;}
+  const ts=Date.now();
+  try{
+    await db.collection("inventory").doc(itemId).set({location:dest},{merge:true});
+    await db.collection("stockLogs").doc(`SL-${ts}-out`).set({itemId,itemName:item.name,type:"調出",qty:-qty,balanceAfter:item.qty,reason:`調撥至 ${dest} · ${g("tf-reason")}`,createdTime:firebase.firestore.Timestamp.now(),createdBy:currentUser.uid});
+    await db.collection("stockLogs").doc(`SL-${ts}-in`).set({itemId,itemName:item.name,type:"調入",qty,balanceAfter:item.qty,reason:`從 ${item.location||"原位"} 調入 · ${g("tf-reason")}`,createdTime:firebase.firestore.Timestamp.now(),createdBy:currentUser.uid});
+    pushNotif(`${item.name} 已調撥至 ${dest}`,"success");showToast("調撥完成");closeModal();
+  }catch(e){showToast("調撥失敗","error");}
+}
+// ─── 明細帳 ─────────────────────────────────────────────────
+function renderLedger(){
+  const itemOpts=[{id:"all",name:"全部品項"},...state.inventory];
+  const selId=state.whLedgerItem||"all";
+  const logs=selId==="all"?state.stockLogs:state.stockLogs.filter(l=>l.itemId===selId);
+  return `
+  <div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+      <div class="card-title" style="margin:0">📊 庫存明細帳</div>
+      <select class="inp" style="width:200px" onchange="state.whLedgerItem=this.value;renderContent()">${itemOpts.map(i=>`<option value="${i.id}"${selId===i.id?" selected":""}>${esc(i.name)}</option>`).join("")}</select>
+    </div>
+    ${logs.length===0?'<div style="text-align:center;color:var(--muted);padding:20px">尚無異動記錄</div>':""}
+    <div style="overflow-x:auto">${logs.length>0?`<table style="width:100%;font-size:12px;border-collapse:collapse">
+      <tr style="color:var(--muted);border-bottom:1px solid var(--border2)"><th style="padding:8px 6px;text-align:left">時間</th><th style="padding:8px 6px;text-align:left">品名</th><th style="padding:8px 6px">類型</th><th style="padding:8px 6px">數量</th><th style="padding:8px 6px">結餘</th><th style="padding:8px 6px;text-align:left">原因</th></tr>
+      ${logs.slice(0,100).map(l=>{
+        const d=l.createdTime?.toDate?.();const ds=d?d.toLocaleString("zh-TW",{month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit"}):"—";
+        const isIn=l.qty>0;
+        return `<tr style="border-bottom:1px solid var(--border)">
+          <td style="padding:8px 6px;color:var(--muted)">${ds}</td>
+          <td style="padding:8px 6px;font-weight:600">${esc(l.itemName)}</td>
+          <td style="padding:8px 6px;text-align:center"><span class="pill" style="background:${isIn?"#22C55E22":"#EF444422"};color:${isIn?"#22C55E":"#EF4444"};font-size:10px">${l.type}</span></td>
+          <td style="padding:8px 6px;text-align:center;font-weight:700;color:${isIn?"#22C55E":"#EF4444"}">${isIn?"+":""}${l.qty}</td>
+          <td style="padding:8px 6px;text-align:center">${l.balanceAfter??""}</td>
+          <td style="padding:8px 6px;font-size:11px">${esc(l.reason||"—")}</td>
+        </tr>`;
+      }).join("")}
+    </table>`:""}</div>
+  </div>`;
+}
+// ─── END WAREHOUSE ──────────────────────────────────────────
 // ─── END ACCOUNTING ─────────────────────────────────────────
 function renderLine(){
   if(currentUserRole==="sales"||currentUserRole==="operator"||currentUserRole==="floor")return `<div class="card"><div style="padding:20px;text-align:center;color:var(--muted)">只有主管和管理員可以管理 LINE 通知。</div></div>`;
