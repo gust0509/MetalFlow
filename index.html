@@ -10,6 +10,9 @@
 <title>MetalFlow PRO</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 :root{
@@ -133,9 +136,55 @@ input.inp,select.inp,textarea.inp{width:100%;background:#060C1A;border:1px solid
 .bn-cnt{font-size:11px;font-weight:700}
 .bn-bar{width:34px;border-radius:4px 4px 0 0;transition:height .7s}
 .bn-lbl{font-size:8px;color:var(--muted);text-align:center;width:44px;line-height:1.2}
+/* LOGIN SCREEN */
+#login-wrap{position:fixed;inset:0;background:var(--bg);display:flex;align-items:center;justify-content:center;z-index:3000;flex-direction:column;padding:20px}
+.login-card{background:var(--surface);border:1px solid var(--border);border-radius:20px;padding:40px 24px;max-width:400px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.8)}
+.login-logo{text-align:center;font-size:48px;margin-bottom:12px}
+.login-title{text-align:center;font-size:24px;font-weight:800;font-family:'Syne',sans-serif;margin-bottom:8px}
+.login-sub{text-align:center;font-size:12px;color:var(--muted);margin-bottom:28px}
+.login-form{display:flex;flex-direction:column;gap:14px}
+.login-input{background:#060C1A;border:1px solid var(--border2);border-radius:10px;padding:12px 14px;color:var(--text);font-size:13px;outline:none;font-family:inherit}
+.login-input::placeholder{color:var(--dim)}
+.login-input:focus{border-color:var(--blue)}
+.login-btn{background:linear-gradient(135deg,#2563EB,#7C3AED);color:#fff;border:none;border-radius:10px;padding:12px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;transition:opacity .2s}
+.login-btn:hover{opacity:.9}
+.login-btn:disabled{opacity:.5;cursor:not-allowed}
+.login-err{background:#7F1D1D;color:#FCA5A5;border:1px solid #7F1D1D;border-radius:10px;padding:10px;font-size:12px;margin-bottom:10px;display:none}
+.login-help{text-align:center;font-size:11px;color:var(--muted);margin-top:20px}
+.login-toggle{background:none;border:none;color:var(--blue);cursor:pointer;font-weight:600;text-decoration:underline}
 </style>
 </head>
 <body>
+<!-- LOGIN SCREEN -->
+<div id="login-wrap">
+  <div class="login-card">
+    <div class="login-logo">⬡</div>
+    <div class="login-title">MetalFlow</div>
+    <div class="login-sub">板金製程管理系統</div>
+    <div class="login-err" id="login-err"></div>
+
+    <!-- LOGIN FORM -->
+    <form class="login-form" id="login-form" onsubmit="handleLogin(event)">
+      <input class="login-input" type="email" id="login-email" placeholder="電子郵件" required>
+      <input class="login-input" type="password" id="login-pass" placeholder="密碼" required>
+      <button type="submit" class="login-btn" id="login-submit-btn">登入</button>
+    </form>
+
+    <!-- SIGNUP FORM -->
+    <form class="login-form" id="signup-form" style="display:none" onsubmit="handleSignup(event)">
+      <input class="login-input" type="email" id="signup-email" placeholder="電子郵件" required>
+      <input class="login-input" type="password" id="signup-pass" placeholder="密碼（至少6位）" required>
+      <input class="login-input" type="password" id="signup-pass2" placeholder="確認密碼" required>
+      <button type="submit" class="login-btn" id="signup-submit-btn">建立帳號</button>
+    </form>
+
+    <div class="login-help">
+      <span id="login-toggle-text">還沒有帳號？</span>
+      <button type="button" class="login-toggle" id="login-toggle-btn" onclick="toggleLoginMode()">註冊</button>
+    </div>
+  </div>
+</div>
+
 <!-- SIDEBAR -->
 <div id="sidebar">
   <div class="side-logo">
@@ -148,10 +197,14 @@ input.inp,select.inp,textarea.inp{width:100%;background:#060C1A;border:1px solid
   <nav class="side-nav" id="side-nav"></nav>
   <div class="side-footer">
     <div class="user-row">
-      <div class="ava">A</div>
-      <div><div style="font-size:13px;font-weight:700">Alvin Wei</div><div style="font-size:11px;color:var(--muted)">廠長 · 系統管理員</div></div>
+      <div class="ava" id="user-ava">A</div>
+      <div>
+        <div style="font-size:13px;font-weight:700" id="user-name">User</div>
+        <div style="font-size:11px;color:var(--muted)" id="user-role">管理者</div>
+      </div>
     </div>
-    <div class="line-status"><span class="green-dot"></span><span style="font-size:11px;color:var(--line)">LINE Bot 連線中</span></div>
+    <div class="line-status"><span class="green-dot"></span><span style="font-size:11px;color:var(--line)">已連線</span></div>
+    <button style="background:none;border:none;color:var(--muted);font-size:11px;width:100%;text-align:left;padding:8px 0;cursor:pointer;margin-top:8px;font-family:inherit;transition:color .2s" onmouseover="this.style.color='var(--text)'" onmouseout="this.style.color='var(--muted)'" onclick="handleLogout()">登出</button>
   </div>
 </div>
 <div id="scrim"></div>
@@ -173,6 +226,21 @@ input.inp,select.inp,textarea.inp{width:100%;background:#060C1A;border:1px solid
 <!-- TOAST -->
 <div id="toast"></div>
 <script>
+// ─── FIREBASE INIT ────────────────────────────────────────────
+const firebaseConfig={
+  apiKey:"AIzaSyCwH7RwT5omqL087UIdICp1tNeIE4HkzF8",
+  authDomain:"metalflow-33843.firebaseapp.com",
+  projectId:"metalflow-33843",
+  storageBucket:"metalflow-33843.firebasestorage.app",
+  messagingSenderId:"437288401026",
+  appId:"1:437288401026:web:2a7f7a3892a061504ddc9b"
+};
+firebase.initializeApp(firebaseConfig);
+const auth=firebase.auth();
+const db=firebase.firestore();
+let currentUser=null, currentUserRole="operator";
+let unsubscribeOrders=null, unsubscribeQuotes=null;
+
 // ─── DATA ────────────────────────────────────────────────────
 const STAGES=[
   {id:"inquiry",label:"詢價",icon:"📋",color:"#64748B"},
@@ -190,32 +258,20 @@ const STAGES=[
 const STAGE_IDS=STAGES.map(s=>s.id);
 const STATUS_COLOR={"待處理":"#F59E0B","進行中":"#3B82F6","完成":"#22C55E","延誤":"#EF4444"};
 const TABS=[
-  {id:"dashboard",label:"儀表板",icon:"◈"},
-  {id:"orders",label:"工單",icon:"⊞"},
-  {id:"flow",label:"看板",icon:"⟳"},
-  {id:"quotes",label:"報價",icon:"¥"},
-  {id:"line",label:"LINE",icon:"◉"},
-  {id:"analytics",label:"分析",icon:"◎"},
-  {id:"notif",label:"通知",icon:"◆"},
+  {id:"dashboard",label:"儀表板",icon:"◈",roles:["admin","manager","operator","sales"]},
+  {id:"orders",label:"工單",icon:"⊞",roles:["admin","manager","operator"]},
+  {id:"flow",label:"看板",icon:"⟳",roles:["admin","manager","operator"]},
+  {id:"quotes",label:"報價",icon:"¥",roles:["admin","manager","sales"]},
+  {id:"line",label:"LINE",icon:"◉",roles:["admin","manager"]},
+  {id:"analytics",label:"分析",icon:"◎",roles:["admin","manager"]},
+  {id:"users",label:"使用者",icon:"👥",roles:["admin"]},
+  {id:"notif",label:"通知",icon:"◆",roles:["admin","manager","operator","sales"]},
 ];
 let state={
   tab:"dashboard",
-  orders:[
-    {id:"WO-2401",customer:"台積電設備部",industry:"半導體設備",part:"控制箱外殼",qty:5,material:"SUS304 1.5mm",stage:"coating",status:"進行中",deadline:"2026-04-18",amount:45000,priority:"高",note:"需電解拋光後塗裝"},
-    {id:"WO-2402",customer:"新日興機械",industry:"機械設備",part:"機台防護罩",qty:12,material:"SPCC 2.0mm",stage:"bending",status:"進行中",deadline:"2026-04-15",amount:28000,priority:"中",note:""},
-    {id:"WO-2403",customer:"廣達自動化",industry:"自動化設備",part:"料架側板組",qty:30,material:"SECC 1.2mm",stage:"cutting",status:"進行中",deadline:"2026-04-20",amount:62000,priority:"高",note:"白色粉塗 RAL9003"},
-    {id:"WO-2404",customer:"中興電工",industry:"重電",part:"配電盤箱體",qty:8,material:"SPCC 2.0mm",stage:"welding",status:"延誤",deadline:"2026-04-13",amount:38500,priority:"高",note:"焊接變形需矯正"},
-    {id:"WO-2405",customer:"宏正機械",industry:"機械設備",part:"齒輪箱外蓋",qty:20,material:"SUS304 2.0mm",stage:"shipping",status:"完成",deadline:"2026-04-10",amount:55000,priority:"低",note:""},
-    {id:"WO-2406",customer:"聯發科廠務",industry:"半導體設備",part:"潔淨室門板",qty:4,material:"SUS316L 2.0mm",stage:"inquiry",status:"待處理",deadline:"2026-04-25",amount:0,priority:"中",note:"需電解拋光"},
-    {id:"WO-2407",customer:"台達電子",industry:"自動化設備",part:"散熱背板",qty:50,material:"AL 2.0mm",stage:"qc",status:"進行中",deadline:"2026-04-22",amount:72000,priority:"中",note:"陽極處理"},
-    {id:"WO-2408",customer:"研華科技",industry:"機械設備",part:"工控箱體",qty:10,material:"SECC 1.2mm",stage:"order",status:"進行中",deadline:"2026-04-28",amount:45000,priority:"低",note:""},
-  ],
-  quotes:[
-    {id:"QT-0831",customer:"友達光電",industry:"半導體設備",part:"框架支撐板",qty:50,material:"SPCC 1.5mm",process:["雷切","折彎","粉塗"],unitPrice:1200,total:60000,status:"待確認",created:"2026-04-08",validDays:30},
-    {id:"QT-0832",customer:"研華科技",industry:"機械設備",part:"工控箱體",qty:10,material:"SECC 1.2mm",process:["雷切","折彎","焊接","粉塗"],unitPrice:4500,total:45000,status:"已接單",created:"2026-04-09",validDays:30},
-    {id:"QT-0833",customer:"德律科技",industry:"自動化設備",part:"測試治具板",qty:100,material:"SUS304 1.0mm",process:["雷切","折彎"],unitPrice:380,total:38000,status:"報價中",created:"2026-04-10",validDays:30},
-    {id:"QT-0834",customer:"台達電子",industry:"自動化設備",part:"散熱背板",qty:50,material:"AL 2.0mm",process:["雷切","折彎","陽極"],unitPrice:1440,total:72000,status:"已接單",created:"2026-04-07",validDays:30},
-  ],
+  orders:[],
+  quotes:[],
+  users:[],
   lineLog:[],
   notifications:[],
   unread:0,
@@ -275,17 +331,153 @@ function advanceOrder(id){
   const msg=isShip?LT.shipping(o):LT.stageAdvance(o,ns);
   sendLine(msg,o.customer,id);
   pushNotif(`${id} 推進至「${stg(ns)?.label}」`,"advance");
-  o.stage=ns; o.status=isShip?"完成":"進行中";
-  render();
+  db.collection("orders").doc(id).update({stage:ns,status:isShip?"完成":"進行中"})
+    .catch(e=>console.error("更新工單失敗:",e));
 }
 function markDelay(id){
   const o=state.orders.find(x=>x.id===id); if(!o)return;
-  o.status="延誤";
   sendLine(LT.delay(o),o.customer,id);
   pushNotif(`${id} 已標記延誤`,"warn");
   showToast("已標記延誤並通知客戶");
-  render();
+  db.collection("orders").doc(id).update({status:"延誤"})
+    .catch(e=>console.error("更新工單失敗:",e));
 }
+// ─── AUTH & FIREBASE ─────────────────────────────────────────
+function showLoginScreen(){$("login-wrap").style.display="flex";}
+function hideLoginScreen(){$("login-wrap").style.display="none";}
+function toggleLoginMode(){
+  const lf=$("login-form"), sf=$("signup-form"), t=$("login-toggle-text"), b=$("login-toggle-btn");
+  if(lf.style.display==="none"){
+    lf.style.display="flex"; sf.style.display="none";
+    t.textContent="還沒有帳號？"; b.textContent="註冊";
+  }else{
+    lf.style.display="none"; sf.style.display="flex";
+    t.textContent="已有帳號？"; b.textContent="登入";
+  }
+  $("login-err").style.display="none";
+}
+function showLoginError(msg){
+  $("login-err").textContent="❌ "+msg;
+  $("login-err").style.display="block";
+}
+function handleLogin(e){
+  e.preventDefault();
+  const email=document.getElementById("login-email")?.value||"";
+  const pass=document.getElementById("login-pass")?.value||"";
+  if(!email||!pass){showLoginError("請輸入電子郵件和密碼");return;}
+  $("login-submit-btn").disabled=true;
+  auth.signInWithEmailAndPassword(email,pass)
+    .then(u=>{showToast("登入成功"); hideLoginScreen();})
+    .catch(er=>{showLoginError(er.message); $("login-submit-btn").disabled=false;});
+}
+function handleSignup(e){
+  e.preventDefault();
+  const email=document.getElementById("signup-email")?.value||"";
+  const pass=document.getElementById("signup-pass")?.value||"";
+  const pass2=document.getElementById("signup-pass2")?.value||"";
+  if(pass!==pass2){showLoginError("密碼不符"); return;}
+  if(pass.length<6){showLoginError("密碼至少6位"); return;}
+  $("signup-submit-btn").disabled=true;
+  auth.createUserWithEmailAndPassword(email,pass)
+    .then(u=>{return setupNewUser(u.user);})
+    .then(()=>{showToast("帳號建立成功，已登入"); hideLoginScreen();})
+    .catch(er=>{showLoginError(er.message); $("signup-submit-btn").disabled=false;});
+}
+async function setupNewUser(user){
+  const usersRef=db.collection("users");
+  const snap=await usersRef.get();
+  const role=snap.empty?"admin":"operator";
+  await usersRef.doc(user.uid).set({
+    email:user.email,
+    role:role,
+    created:firebase.firestore.Timestamp.now(),
+    displayName:user.email.split("@")[0]
+  });
+}
+function handleLogout(){
+  auth.signOut().then(()=>{
+    state.orders=[]; state.quotes=[];
+    showToast("已登出");
+    if(unsubscribeOrders)unsubscribeOrders();
+    if(unsubscribeQuotes)unsubscribeQuotes();
+  });
+}
+function onAuthStateChanged(){
+  auth.onAuthStateChanged(async user=>{
+    if(!user){
+      showLoginScreen();
+      $("login-form").style.display="flex";
+      $("signup-form").style.display="none";
+      return;
+    }
+    currentUser=user;
+    hideLoginScreen();
+    await loadUserRole();
+    subscribeToFirestore();
+    updateUserDisplay();
+    render();
+  });
+}
+async function loadUserRole(){
+  try{
+    const snap=await db.collection("users").doc(currentUser.uid).get();
+    if(snap.exists){
+      currentUserRole=snap.data().role||"operator";
+    }else{
+      await setupNewUser(currentUser);
+      currentUserRole="admin";
+    }
+    if(!state.tab||state.tab===""){
+      const visibleTabs=TABS.filter(t=>t.roles.includes(currentUserRole));
+      state.tab=visibleTabs[0]?.id||"dashboard";
+    }
+  }catch(e){
+    console.error("載入角色失敗:",e);
+    currentUserRole="operator";
+  }
+}
+function updateUserDisplay(){
+  const ava=$("user-ava"), name=$("user-name"), role=$("user-role");
+  if(currentUser){
+    ava.textContent=(currentUser.email||"U").charAt(0).toUpperCase();
+    name.textContent=currentUser.email.split("@")[0]||"User";
+    const roleLabel={admin:"系統管理員",manager:"主管",operator:"現場人員",sales:"業務"}[currentUserRole]||"使用者";
+    role.textContent=roleLabel;
+  }
+}
+async function subscribeToFirestore(){
+  await initializeTestData();
+
+  if(unsubscribeOrders)unsubscribeOrders();
+  if(unsubscribeQuotes)unsubscribeQuotes();
+
+  unsubscribeOrders=db.collection("orders")
+    .onSnapshot(snap=>{
+      state.orders=snap.docs.map(d=>({...d.data(),id:d.id}))
+        .sort((a,b)=>{
+          const aTime=(a.created?.toDate?.()?.getTime?.())||new Date(a.created||0).getTime();
+          const bTime=(b.created?.toDate?.()?.getTime?.())||new Date(b.created||0).getTime();
+          return bTime-aTime;
+        });
+      render();
+    }, err=>console.error("訂閱工單失敗:",err));
+
+  unsubscribeQuotes=db.collection("quotes")
+    .onSnapshot(snap=>{
+      state.quotes=snap.docs.map(d=>({...d.data(),id:d.id}))
+        .sort((a,b)=>{
+          const aTime=(a.createdTime?.toDate?.()?.getTime?.())||new Date(a.created||0).getTime();
+          const bTime=(b.createdTime?.toDate?.()?.getTime?.())||new Date(b.created||0).getTime();
+          return bTime-aTime;
+        });
+      render();
+    }, err=>console.error("訂閱報價失敗:",err));
+
+  if(currentUserRole==="admin"){
+    await loadAllUsers();
+  }
+}
+
 // ─── RENDER SYSTEM ───────────────────────────────────────────
 function setTab(id){
   state.tab=id;
@@ -296,7 +488,9 @@ function setTab(id){
   $("scrim").classList.remove("show");
 }
 function render(){
+  if(!currentUser)return;
   const t=TABS.find(x=>x.id===state.tab);
+  if(!t)return;
   $("top-title").textContent=`${t.icon} ${t.label}`;
   $("top-date").textContent=new Date().toLocaleDateString("zh-TW",{month:"short",day:"numeric",weekday:"short"});
   renderSideNav(); renderBottomNav();
@@ -307,18 +501,21 @@ function render(){
   else if(state.tab==="quotes") c.innerHTML=renderQuotes();
   else if(state.tab==="line") c.innerHTML=renderLine();
   else if(state.tab==="analytics") c.innerHTML=renderAnalytics();
+  else if(state.tab==="users") c.innerHTML=renderUsers();
   else if(state.tab==="notif") c.innerHTML=renderNotif();
   bindEvents();
 }
 function renderSideNav(){
-  $("side-nav").innerHTML=TABS.map(t=>`
+  const visibleTabs=TABS.filter(t=>t.roles.includes(currentUserRole));
+  $("side-nav").innerHTML=visibleTabs.map(t=>`
     <button class="nav-item${state.tab===t.id?" active":""}" onclick="setTab('${t.id}')">
       <span class="nav-ico">${t.icon}</span><span>${t.label}</span>
       ${t.id==="notif"&&state.unread>0?`<span class="nav-badge">${state.unread}</span>`:""}
     </button>`).join("");
 }
 function renderBottomNav(){
-  $("bottom-nav").innerHTML=TABS.slice(0,6).map(t=>`
+  const visibleTabs=TABS.slice(0,6).filter(t=>t.roles.includes(currentUserRole));
+  $("bottom-nav").innerHTML=visibleTabs.map(t=>`
     <button class="bot-btn${state.tab===t.id?" active":""}" onclick="setTab('${t.id}')">
       <span class="bot-ico">${t.icon}${t.id==="line"&&state.lineLog.length>0?'<span class="bot-dot"></span>':""}</span>
       <span>${t.label}</span>
@@ -392,7 +589,9 @@ function renderDashboard(){
   </div>`;
 }
 function renderOrders(){
-  const filtered=state.orders.filter(o=>{
+  if(currentUserRole==="sales")return `<div class="card"><div style="padding:20px;text-align:center;color:var(--muted)">業務角色只能查看已完成工單的詳情。<br>報價請參考「報價」頁面。</div></div>${state.orders.filter(o=>o.status==="完成").map((o,i)=>renderOrderCard(o,i)).join("")}`;
+  let allOrders=state.orders;
+  const filtered=allOrders.filter(o=>{
     const q=state.orderSearch;
     const mq=!q||o.customer.includes(q)||o.id.includes(q)||o.part.includes(q);
     const ms=state.orderStageFilter==="all"||o.stage===state.orderStageFilter;
@@ -404,7 +603,7 @@ function renderOrders(){
   return `
   <div style="display:flex;gap:10px;margin-bottom:12px;flex-wrap:wrap">
     <input class="inp" style="flex:1;min-width:160px" placeholder="🔍 搜尋工單、客戶…" value="${esc(state.orderSearch)}" oninput="state.orderSearch=this.value;renderContent()">
-    <button class="accent-btn" onclick="openNewOrderModal()">＋ 新建工單</button>
+    ${currentUserRole!=="sales"?`<button class="accent-btn" onclick="openNewOrderModal()">＋ 新建工單</button>`:""}
   </div>
   <div style="display:flex;gap:8px;overflow-x:auto;padding-bottom:8px;margin-bottom:8px">${chips}</div>
   <div style="display:flex;gap:8px;overflow-x:auto;padding-bottom:8px;margin-bottom:10px">${sChips}</div>
@@ -445,6 +644,7 @@ function renderOrderCard(o,i){
   </div>`;
 }
 function renderFlow(){
+  if(currentUserRole==="sales")return `<div class="card"><div style="padding:20px;text-align:center;color:var(--muted)">業務角色無法查看製程看板。</div></div>`;
   return `<div class="card"><div class="card-title">🏭 製程看板</div><div style="font-size:12px;color:var(--muted)">電腦可拖曳 · 手機點 ▶📱 推進</div></div>
   <div class="kanban-wrap">${STAGES.map(s=>{
     const cols=state.orders.filter(o=>o.stage===s.id);
@@ -472,6 +672,7 @@ function renderFlow(){
 }
 const PROCS=["雷切","折彎","焊接","研磨","粉塗","液塗","電解拋光","陽極"];
 function renderQuotes(){
+  if(currentUserRole==="operator")return `<div class="card"><div style="padding:20px;text-align:center;color:var(--muted)">現場人員無法查看報價資訊。</div></div>`;
   const f=state.newQuoteForm;
   const est=f.qty&&f.unitPrice?parseInt(f.qty)*parseFloat(f.unitPrice):0;
   return `
@@ -528,6 +729,7 @@ function renderQuotes(){
   </div>`).join("")}`;
 }
 function renderLine(){
+  if(currentUserRole==="sales"||currentUserRole==="operator")return `<div class="card"><div style="padding:20px;text-align:center;color:var(--muted)">只有主管和管理員可以管理 LINE 通知。</div></div>`;
   const TYPES=[{id:"stageAdvance",l:"製程推進通知"},{id:"delay",l:"延誤警示"},{id:"quoteReady",l:"報價通知"},{id:"shipping",l:"出貨通知"},{id:"custom",l:"自訂訊息"}];
   const lt=state.lineType, lo=state.orders.find(x=>x.id===state.lineOrderId)||state.orders[0];
   const lq=state.quotes.find(x=>x.id===state.lineQuoteId)||state.quotes[0];
@@ -570,6 +772,7 @@ function renderLine(){
   </div>`;
 }
 function renderAnalytics(){
+  if(currentUserRole==="sales"||currentUserRole==="operator")return `<div class="card"><div style="padding:20px;text-align:center;color:var(--muted)">只有主管和管理員可以查看分析數據。</div></div>`;
   const orders=state.orders;
   const totalRev=orders.reduce((s,o)=>s+o.amount,0);
   const byInd={},indRev={};
@@ -634,6 +837,95 @@ function renderAnalytics(){
     </div>
   </div>`;
 }
+function renderUsers(){
+  if(currentUserRole!=="admin")return `<div class="card"><div style="padding:20px;text-align:center;color:var(--muted)">只有管理員可以管理使用者。</div></div>`;
+  return `
+  <div class="card">
+    <div class="card-title">👥 使用者管理</div>
+    <div style="overflow-x:auto">
+      <table class="data-table">
+        <thead><tr><th>電子郵件</th><th>角色</th><th>加入日期</th><th>操作</th></tr></thead>
+        <tbody>${state.users.map(u=>`<tr>
+          <td style="font-weight:600;white-space:nowrap">${esc(u.email)}</td>
+          <td>
+            <select style="background:#060C1A;border:1px solid var(--border2);border-radius:6px;padding:4px 8px;color:var(--text);font-size:12px;cursor:pointer" onchange="updateUserRole('${u.uid}',this.value)">
+              <option value="admin"${u.role==="admin"?" selected":""}>系統管理員</option>
+              <option value="manager"${u.role==="manager"?" selected":""}>主管</option>
+              <option value="operator"${u.role==="operator"?" selected":""}>現場人員</option>
+              <option value="sales"${u.role==="sales"?" selected":""}>業務</option>
+            </select>
+          </td>
+          <td style="font-size:12px;color:var(--muted)">${u.created?new Date(u.created.toDate()).toLocaleDateString("zh-TW"):"-"}</td>
+          <td><button class="icon-btn" style="color:#EF4444;font-size:11px" onclick="deleteUser('${u.uid}')">刪除</button></td>
+        </tr>`).join("")}</tbody>
+      </table>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-title">新增使用者邀請</div>
+    <div style="display:flex;gap:10px;margin-bottom:12px">
+      <input class="inp" type="email" id="invite-email" placeholder="輸入電子郵件" style="flex:1">
+      <button class="accent-btn" onclick="inviteUser()">發送邀請</button>
+    </div>
+    <div style="font-size:12px;color:var(--muted)">新使用者將收到註冊連結，默認角色為「現場人員」</div>
+  </div>`;
+}
+async function updateUserRole(uid,role){
+  try{
+    await db.collection("users").doc(uid).update({role});
+    showToast("角色已更新");
+    loadAllUsers();
+  }catch(e){
+    console.error("更新角色失敗:",e);
+    showToast("更新失敗","error");
+  }
+}
+async function deleteUser(uid){
+  if(!confirm("確定要刪除此使用者？"))return;
+  try{
+    await db.collection("users").doc(uid).delete();
+    showToast("使用者已刪除");
+    loadAllUsers();
+  }catch(e){
+    console.error("刪除失敗:",e);
+    showToast("刪除失敗","error");
+  }
+}
+function inviteUser(){
+  const email=$("invite-email")?.value;
+  if(!email){showToast("請輸入電子郵件","error");return;}
+  showToast("邀請已發送（演示模式）");
+  $("invite-email").value="";
+}
+async function loadAllUsers(){
+  try{
+    const snap=await db.collection("users").get();
+    state.users=snap.docs.map(d=>({uid:d.id,...d.data()}));
+    render();
+  }catch(e){
+    console.error("載入使用者失敗:",e);
+  }
+}
+async function initializeTestData(){
+  try{
+    const snap=await db.collection("orders").get();
+    if(snap.empty){
+      const baseDate=new Date();
+      const testOrders=[
+        {customer:"台積電設備部",industry:"半導體設備",part:"控制箱外殼",qty:5,material:"SUS304 1.5mm",stage:"coating",status:"進行中",deadline:"2026-04-18",amount:45000,priority:"高",note:"需電解拋光後塗裝",created:firebase.firestore.Timestamp.fromDate(new Date(baseDate.getTime()-2*24*60*60*1000)),createdBy:"system"},
+        {customer:"新日興機械",industry:"機械設備",part:"機台防護罩",qty:12,material:"SPCC 2.0mm",stage:"bending",status:"進行中",deadline:"2026-04-15",amount:28000,priority:"中",note:"",created:firebase.firestore.Timestamp.fromDate(new Date(baseDate.getTime()-1*24*60*60*1000)),createdBy:"system"},
+        {customer:"廣達自動化",industry:"自動化設備",part:"料架側板組",qty:30,material:"SECC 1.2mm",stage:"cutting",status:"進行中",deadline:"2026-04-20",amount:62000,priority:"高",note:"白色粉塗 RAL9003",created:firebase.firestore.Timestamp.fromDate(baseDate),createdBy:"system"},
+      ];
+      let woCount=2401;
+      for(const o of testOrders){
+        await db.collection("orders").doc(`WO-${woCount++}`).set(o);
+      }
+    }
+  }catch(e){
+    console.error("初始化數據失敗:",e);
+  }
+}
+
 function renderNotif(){
   const delayed=state.orders.filter(o=>o.status==="延誤");
   const near=state.orders.filter(o=>{const d=daysLeft(o.deadline);return d>=0&&d<=2&&o.status!=="完成";});
@@ -681,8 +973,8 @@ function advanceToStage(id,sid){
   const msg=isShip?LT.shipping(o):LT.stageAdvance(o,ns);
   sendLine(msg,o.customer,id);
   pushNotif(`${id} 移至「${stg(ns)?.label}」`,"advance");
-  o.stage=ns; o.status=isShip?"完成":"進行中";
-  render();
+  db.collection("orders").doc(id).update({stage:ns,status:isShip?"完成":"進行中"})
+    .catch(e=>console.error("更新工單失敗:",e));
 }
 function toggleProcess(p){
   const f=state.newQuoteForm;
@@ -705,27 +997,33 @@ function doSendLine(){
 }
 function confirmQuote(id){
   const q=state.quotes.find(x=>x.id===id); if(!q)return;
-  q.status="已接單";
   sendLine(LT.quoteReady(q),q.customer,id);
   pushNotif(`報價 ${id} 已接單`,"success");
-  render();
+  db.collection("quotes").doc(id).update({status:"已接單"})
+    .catch(e=>console.error("更新報價失敗:",e));
 }
 function resendLine(id){
   const q=state.quotes.find(x=>x.id===id); if(!q)return;
   sendLine(LT.quoteReady(q),q.customer);
   render();
 }
-function submitQuote(){
+async function submitQuote(){
   const f=state.newQuoteForm;
   if(!f.customer||!f.qty||!f.unitPrice){showToast("請填必填欄位","error");return;}
   const total=parseInt(f.qty)*parseFloat(f.unitPrice);
-  const nq={id:`QT-${String(state.quoteCount++).padStart(4,"0")}`, customer:f.customer, industry:f.industry, part:f.part, qty:parseInt(f.qty), material:f.material, process:[...f.process], unitPrice:parseFloat(f.unitPrice), total, validDays:parseInt(f.validDays)||30, status:"報價中", note:f.note, created:new Date().toISOString().slice(0,10)};
-  state.quotes.unshift(nq);
-  sendLine(LT.quoteReady(nq),nq.customer,nq.id);
-  pushNotif(`報價單 ${nq.id} 已建立`,"success");
-  state.quoteFormOpen=false;
-  state.newQuoteForm={customer:"",industry:"機械設備",part:"",qty:"",material:"",process:[],unitPrice:"",validDays:"30",note:""};
-  render();
+  const qId=`QT-${String(state.quoteCount++).padStart(4,"0")}`;
+  const nq={customer:f.customer, industry:f.industry, part:f.part, qty:parseInt(f.qty), material:f.material, process:[...f.process], unitPrice:parseFloat(f.unitPrice), total, validDays:parseInt(f.validDays)||30, status:"報價中", note:f.note, created:new Date().toISOString().slice(0,10), createdBy:currentUser.uid, createdTime:firebase.firestore.Timestamp.now()};
+  try{
+    await db.collection("quotes").doc(qId).set(nq);
+    sendLine(LT.quoteReady({...nq,id:qId}),f.customer,qId);
+    pushNotif(`報價單 ${qId} 已建立`,"success");
+    state.quoteFormOpen=false;
+    state.newQuoteForm={customer:"",industry:"機械設備",part:"",qty:"",material:"",process:[],unitPrice:"",validDays:"30",note:""};
+    render();
+  }catch(e){
+    console.error("建立報價失敗:",e);
+    showToast("建立報價失敗","error");
+  }
 }
 function exportPDF(id){
   const q=state.quotes.find(x=>x.id===id); if(!q)return;
@@ -791,15 +1089,21 @@ function openNewOrderModal(){
     </div>`;
   $("modal-wrap").classList.add("show");
 }
-function submitNewOrder(){
+async function submitNewOrder(){
   const g=id=>$(id)?.value||"";
   const customer=g("nof-customer"), part=g("nof-part"), qty=g("nof-qty");
   if(!customer||!part||!qty){showToast("請填必填欄位","error");return;}
-  const nw={id:`WO-${String(state.orderWoCount++).padStart(4,"0")}`,customer,part,qty:parseInt(qty),material:g("nof-material"),stage:g("nof-stage"),priority:g("nof-priority"),deadline:g("nof-deadline"),amount:parseFloat(g("nof-amount"))||0,note:g("nof-note"),industry:g("nof-industry"),status:"待處理"};
-  state.orders.unshift(nw);
-  pushNotif(`新工單 ${nw.id} 已建立`,"success");
-  showToast("新工單已建立");
-  closeModal(); render();
+  const wId=`WO-${String(state.orderWoCount++).padStart(4,"0")}`;
+  const nw={customer,part,qty:parseInt(qty),material:g("nof-material"),stage:g("nof-stage"),priority:g("nof-priority"),deadline:g("nof-deadline"),amount:parseFloat(g("nof-amount"))||0,note:g("nof-note"),industry:g("nof-industry"),status:"待處理",created:firebase.firestore.Timestamp.now(),createdBy:currentUser.uid};
+  try{
+    await db.collection("orders").doc(wId).set(nw);
+    pushNotif(`新工單 ${wId} 已建立`,"success");
+    showToast("新工單已建立");
+    closeModal();
+  }catch(e){
+    console.error("建立工單失敗:",e);
+    showToast("建立工單失敗","error");
+  }
 }
 function closeModal(){$("modal-wrap").classList.remove("show");}
 function bindEvents(){}
@@ -815,8 +1119,8 @@ window.addEventListener("load",()=>{
     document.body.appendChild(b);
     setTimeout(()=>b.remove(),8000);
   }
+  onAuthStateChanged();
 });
-render();
 </script>
 </body>
 </html>
