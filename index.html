@@ -1149,7 +1149,7 @@ async function submitEditOrder(id){
   if(!customer||!part||!qty){showToast("請填必填欄位","error");return;}
   const updates={customer,part,qty:parseInt(qty),material:g("edf-material"),stage:g("edf-stage"),priority:g("edf-priority"),deadline:g("edf-deadline"),amount:parseFloat(g("edf-amount"))||0,note:g("edf-note"),industry:g("edf-industry"),status:g("edf-status")};
   try{
-    await db.collection("orders").doc(id).update(updates);
+    await db.collection("orders").doc(id).set(updates,{merge:true});
     pushNotif(`工單 ${id} 已更新`,"success");
     showToast("工單已更新");
     closeModal();
