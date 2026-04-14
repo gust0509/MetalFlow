@@ -291,6 +291,93 @@ const stg=id=>STAGES.find(s=>s.id===id);
 const stgIdx=id=>STAGE_IDS.indexOf(id);
 const daysLeft=deadline=>Math.ceil((new Date(deadline)-new Date())/86400000);
 const esc=s=>(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+// ─── PHOTO SYSTEM ────────────────────────────────────────────
+function compressImage(file,maxW=800,quality=0.6){
+  return new Promise((resolve,reject)=>{
+    const reader=new FileReader();
+    reader.onload=e=>{
+      const img=new Image();
+      img.onload=()=>{
+        const c=document.createElement("canvas");
+        let w=img.width,h=img.height;
+        if(w>maxW){h=Math.round(h*maxW/w);w=maxW;}
+        c.width=w;c.height=h;
+        const ctx=c.getContext("2d");
+        ctx.drawImage(img,0,0,w,h);
+        const dataUrl=c.toDataURL("image/jpeg",quality);
+        if(dataUrl.length>300000){
+          const dataUrl2=c.toDataURL("image/jpeg",0.3);
+          resolve(dataUrl2);
+        }else{resolve(dataUrl);}
+      };
+      img.onerror=reject;
+      img.src=e.target.result;
+    };
+    reader.onerror=reject;
+    reader.readAsDataURL(file);
+  });
+}
+function photoInput(targetId,multi=true){
+  return `<div style="margin-bottom:14px">
+    <label class="lbl">📷 拍照 / 上傳照片${multi?" (可多張)":""}</label>
+    <div style="display:flex;gap:8px;margin-top:6px;flex-wrap:wrap">
+      <label style="display:flex;align-items:center;justify-content:center;width:80px;height:80px;border:2px dashed var(--border2);border-radius:10px;cursor:pointer;color:var(--muted);font-size:24px;flex-shrink:0">
+        📷<input type="file" accept="image/*" capture="environment" style="display:none" onchange="handlePhotoUpload(event,'${targetId}')">
+      </label>
+      <label style="display:flex;align-items:center;justify-content:center;width:80px;height:80px;border:2px dashed var(--border2);border-radius:10px;cursor:pointer;color:var(--muted);font-size:13px;text-align:center;flex-shrink:0">
+        📁 選檔<input type="file" accept="image/*" ${multi?"multiple":""} style="display:none" onchange="handlePhotoUpload(event,'${targetId}')">
+      </label>
+      <div id="${targetId}-preview" style="display:flex;gap:6px;flex-wrap:wrap"></div>
+    </div>
+    <input type="hidden" id="${targetId}" value="[]">
+  </div>`;
+}
+async function handlePhotoUpload(event,targetId){
+  const files=Array.from(event.target.files);
+  if(!files.length)return;
+  const existing=JSON.parse($(targetId).value||"[]");
+  if(existing.length+files.length>5){showToast("最多上傳 5 張照片","error");return;}
+  showToast("壓縮照片中...");
+  for(const f of files){
+    try{
+      const dataUrl=await compressImage(f);
+      existing.push({data:dataUrl,name:f.name,time:new Date().toISOString()});
+    }catch(e){console.error("壓縮失敗:",e);}
+  }
+  $(targetId).value=JSON.stringify(existing);
+  renderPhotoPreview(targetId,existing);
+  showToast(`已加入 ${files.length} 張照片`);
+}
+function renderPhotoPreview(targetId,photos){
+  const container=$(`${targetId}-preview`);
+  if(!container)return;
+  container.innerHTML=photos.map((p,i)=>`
+    <div style="position:relative;width:80px;height:80px;border-radius:8px;overflow:hidden;flex-shrink:0">
+      <img src="${p.data}" style="width:100%;height:100%;object-fit:cover">
+      <button onclick="removePhoto('${targetId}',${i})" style="position:absolute;top:2px;right:2px;background:#EF4444;color:#fff;border:none;border-radius:50%;width:20px;height:20px;font-size:11px;cursor:pointer;display:flex;align-items:center;justify-content:center">✕</button>
+    </div>`).join("");
+}
+function removePhoto(targetId,idx){
+  const photos=JSON.parse($(targetId).value||"[]");
+  photos.splice(idx,1);
+  $(targetId).value=JSON.stringify(photos);
+  renderPhotoPreview(targetId,photos);
+}
+function renderPhotos(photos){
+  if(!photos||!photos.length)return "";
+  return `<div style="margin-top:10px"><div class="lbl">📷 附件照片 (${photos.length})</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px">${photos.map((p,i)=>`
+      <img src="${p.data}" onclick="openPhotoFull('${i}',this)" style="width:100px;height:100px;object-fit:cover;border-radius:8px;cursor:pointer;border:1px solid var(--border2)">`).join("")}
+    </div></div>`;
+}
+function openPhotoFull(idx,el){
+  const src=el.src;
+  const overlay=document.createElement("div");
+  overlay.style.cssText="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.9);z-index:9999;display:flex;align-items:center;justify-content:center;cursor:pointer";
+  overlay.innerHTML=`<img src="${src}" style="max-width:95vw;max-height:95vh;object-fit:contain;border-radius:8px">`;
+  overlay.onclick=()=>overlay.remove();
+  document.body.appendChild(overlay);
+}
 function showToast(msg,type="success"){
   const t=$("toast");
   t.textContent=(type==="line"?"💬 ":type==="error"?"⚠ ":"✓ ")+msg;
@@ -329,12 +416,30 @@ function advanceOrder(id){
   const o=state.orders.find(x=>x.id===id); if(!o)return;
   const si=stgIdx(o.stage); if(si>=STAGES.length-1)return;
   const ns=STAGE_IDS[si+1];
+  $("modal-box").innerHTML=`
+    <div class="modal-head"><div class="modal-title">▶ 推進工單 ${o.id}</div><button class="close-btn" onclick="closeModal()">✕</button></div>
+    <div style="margin-bottom:10px;font-size:13px;color:var(--muted)">從 <strong style="color:var(--text)">${stg(o.stage)?.label}</strong> → <strong style="color:var(--green)">${stg(ns)?.label}</strong></div>
+    ${photoInput("adv-photos")}
+    <div style="display:flex;gap:10px">
+      <button class="accent-btn" style="flex:1;padding:11px" onclick="confirmAdvance('${id}','${ns}')">✅ 確認推進</button>
+      <button class="icon-btn" style="flex:1;padding:11px;text-align:center" onclick="closeModal()">取消</button>
+    </div>`;
+  $("modal-wrap").classList.add("show");
+}
+async function confirmAdvance(id,ns){
+  const o=state.orders.find(x=>x.id===id); if(!o)return;
   const isShip=ns==="shipping";
   const msg=isShip?LT.shipping(o):LT.stageAdvance(o,ns);
+  const newPhotos=JSON.parse($("adv-photos")?.value||"[]");
+  const existing=o.photos||[];
+  const allPhotos=existing.concat(newPhotos);
   sendLine(msg,o.customer,id);
   pushNotif(`${id} 推進至「${stg(ns)?.label}」`,"advance");
-  db.collection("orders").doc(id).update({stage:ns,status:isShip?"完成":"進行中"})
-    .catch(e=>console.error("更新工單失敗:",e));
+  try{
+    await db.collection("orders").doc(id).set({stage:ns,status:isShip?"完成":"進行中",photos:allPhotos},{merge:true});
+    showToast(`${id} 已推進至「${stg(ns)?.label}」`);
+    closeModal();
+  }catch(e){console.error("更新工單失敗:",e);showToast("推進失敗","error");}
 }
 function markDelay(id){
   const o=state.orders.find(x=>x.id===id); if(!o)return;
@@ -796,6 +901,7 @@ function openNewServiceModal(){
     </div>
     <div style="margin-bottom:10px"><label class="lbl">問題描述*</label><textarea class="inp" id="svc-desc" rows="3" style="resize:vertical"></textarea></div>
     <div style="margin-bottom:14px"><label class="lbl">聯絡人 / 電話</label><input class="inp" id="svc-contact"></div>
+    ${photoInput("svc-photos")}
     <div style="display:flex;gap:10px">
       <button class="accent-btn" style="flex:1;padding:11px" onclick="submitNewService()">建立回報</button>
       <button class="icon-btn" style="flex:1;padding:11px;text-align:center" onclick="closeModal()">取消</button>
@@ -807,7 +913,8 @@ async function submitNewService(){
   const customer=g("svc-customer"),desc=g("svc-desc");
   if(!customer||!desc){showToast("請填客戶名稱和問題描述","error");return;}
   const sId=`SVC-${String(Date.now()).slice(-6)}`;
-  const data={customer,orderId:g("svc-orderId"),part:g("svc-part"),type:g("svc-type"),description:desc,contact:g("svc-contact"),status:"待處理",resolution:"",createdTime:firebase.firestore.Timestamp.now(),createdBy:currentUser.uid};
+  const photos=JSON.parse(g("svc-photos")||"[]");
+  const data={customer,orderId:g("svc-orderId"),part:g("svc-part"),type:g("svc-type"),description:desc,contact:g("svc-contact"),photos,status:"待處理",resolution:"",createdTime:firebase.firestore.Timestamp.now(),createdBy:currentUser.uid};
   try{
     await db.collection("serviceReports").doc(sId).set(data);
     pushNotif(`售服回報 ${sId} 已建立`,"success");
@@ -823,6 +930,7 @@ function openViewServiceModal(id){
     ${[["回報編號",r.id],["客戶",r.customer],["關聯工單",r.orderId||"—"],["品名",r.part||"—"],["類型",r.type],["狀態",r.status],["建立時間",ds],["聯絡人",r.contact||"—"]].map(([k,v])=>`<div class="detail-row"><span class="detail-key">${k}</span><span class="detail-val">${esc(v)}</span></div>`).join("")}
     <div style="margin-top:12px"><div class="lbl">問題描述</div><div style="background:#0F172A;border-radius:8px;padding:10px;font-size:13px;color:var(--text);margin-top:4px">${esc(r.description||"—")}</div></div>
     ${r.resolution?`<div style="margin-top:10px"><div class="lbl">處理結果</div><div style="background:#14532D33;border-radius:8px;padding:10px;font-size:13px;color:#86EFAC;margin-top:4px">${esc(r.resolution)}</div></div>`:""}
+    ${renderPhotos(r.photos)}
     <button class="icon-btn" style="width:100%;padding:10px;margin-top:14px;text-align:center" onclick="closeModal()">關閉</button>`;
   $("modal-wrap").classList.add("show");
 }
@@ -845,18 +953,26 @@ function openEditServiceModal(id){
     </div>
     <div style="margin-bottom:10px"><label class="lbl">問題描述*</label><textarea class="inp" id="esvc-desc" rows="3" style="resize:vertical">${esc(r.description||"")}</textarea></div>
     <div style="margin-bottom:14px"><label class="lbl">處理結果</label><textarea class="inp" id="esvc-resolution" rows="2" style="resize:vertical">${esc(r.resolution||"")}</textarea></div>
+    ${photoInput("esvc-photos")}
     <div style="display:flex;gap:10px">
       <button class="accent-btn" style="flex:1;padding:11px" onclick="submitEditService('${r.id}')">💾 儲存</button>
       <button class="icon-btn" style="flex:1;padding:11px;text-align:center" onclick="closeModal()">取消</button>
     </div>
     ${currentUserRole==="admin"?`<button style="background:#7F1D1D;color:#FCA5A5;border:1px solid #991B1B;border-radius:10px;padding:10px;width:100%;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;margin-top:10px" onclick="deleteService('${r.id}')">🗑️ 刪除</button>`:""}`;
   $("modal-wrap").classList.add("show");
+  setTimeout(()=>{
+    if(r.photos&&r.photos.length){
+      const el=$("esvc-photos");
+      if(el){el.value=JSON.stringify(r.photos);renderPhotoPreview("esvc-photos",r.photos);}
+    }
+  },50);
 }
 async function submitEditService(id){
   const g=fid=>$(fid)?.value||"";
   const customer=g("esvc-customer"),desc=g("esvc-desc");
   if(!customer||!desc){showToast("請填必填欄位","error");return;}
-  const updates={customer,orderId:g("esvc-orderId"),part:g("esvc-part"),type:g("esvc-type"),description:desc,contact:g("esvc-contact"),status:g("esvc-status"),resolution:g("esvc-resolution")};
+  const photos=JSON.parse(g("esvc-photos")||"[]");
+  const updates={customer,orderId:g("esvc-orderId"),part:g("esvc-part"),type:g("esvc-type"),description:desc,contact:g("esvc-contact"),status:g("esvc-status"),resolution:g("esvc-resolution"),photos};
   try{
     await db.collection("serviceReports").doc(id).set(updates,{merge:true});
     pushNotif(`售服 ${id} 已更新`,"success");showToast("已更新");closeModal();
@@ -1204,6 +1320,7 @@ function openViewModal(id){
       <div class="bar-bg" style="height:8px"><div class="bar-fill" style="height:8px;width:${pct}%;background:linear-gradient(90deg,#3B82F6,${s.color})"></div></div>
     </div>
     ${[["工單號",o.id],["客戶",o.customer],["品名",o.part],["數量",`${o.qty} 件`],["材質",o.material],["產業",o.industry],["截止日期",o.deadline],["金額",o.amount>0?`NT$ ${o.amount.toLocaleString()}`:"未定"],["狀態",o.status],["優先",o.priority],["備註",o.note||"—"]].map(([k,v])=>`<div class="detail-row"><span class="detail-key">${k}</span><span class="detail-val">${esc(v)}</span></div>`).join("")}
+    ${renderPhotos(o.photos)}
     <div style="display:flex;gap:10px;margin-top:14px">
       ${currentUserRole!=="floor"?`<button style="background:#3B82F6;color:#fff;border:none;border-radius:10px;padding:11px;flex:1;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit" onclick="closeModal();openEditOrderModal('${o.id}')">✏️ 編輯工單</button>`:""}
       <button style="background:#06C755;color:#fff;border:none;border-radius:10px;padding:11px;flex:1;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit" onclick="sendCurrentOrderLine('${o.id}');closeModal()">📱 通知客戶</button>
@@ -1236,6 +1353,7 @@ function openNewOrderModal(){
       <div><label class="lbl">起始站點</label><select class="inp" id="nof-stage">${STAGES.map(s=>`<option value="${s.id}"${f.stage===s.id?" selected":""}>${s.label}</option>`).join("")}</select></div>
     </div>
     <div style="margin-bottom:14px"><label class="lbl">備註</label><input class="inp" id="nof-note" value="${esc(f.note)}"></div>
+    ${photoInput("nof-photos")}
     <div style="display:flex;gap:10px">
       <button class="accent-btn" style="flex:1;padding:11px" onclick="submitNewOrder()">建立工單</button>
       <button class="icon-btn" style="flex:1;padding:11px;text-align:center" onclick="closeModal()">取消</button>
@@ -1247,7 +1365,8 @@ async function submitNewOrder(){
   const customer=g("nof-customer"), part=g("nof-part"), qty=g("nof-qty");
   if(!customer||!part||!qty){showToast("請填必填欄位","error");return;}
   const wId=`WO-${String(state.orderWoCount++).padStart(4,"0")}`;
-  const nw={customer,part,qty:parseInt(qty),material:g("nof-material"),stage:g("nof-stage"),priority:g("nof-priority"),deadline:g("nof-deadline"),amount:parseFloat(g("nof-amount"))||0,note:g("nof-note"),industry:g("nof-industry"),status:"待處理",created:firebase.firestore.Timestamp.now(),createdBy:currentUser.uid};
+  const photos=JSON.parse(g("nof-photos")||"[]");
+  const nw={customer,part,qty:parseInt(qty),material:g("nof-material"),stage:g("nof-stage"),priority:g("nof-priority"),deadline:g("nof-deadline"),amount:parseFloat(g("nof-amount"))||0,note:g("nof-note"),industry:g("nof-industry"),photos,status:"待處理",created:firebase.firestore.Timestamp.now(),createdBy:currentUser.uid};
   try{
     await db.collection("orders").doc(wId).set(nw);
     pushNotif(`新工單 ${wId} 已建立`,"success");
@@ -1282,18 +1401,26 @@ function openEditOrderModal(id){
       <div><label class="lbl">狀態</label><select class="inp" id="edf-status">${statusOpts.map(x=>`<option${o.status===x?" selected":""}>${x}</option>`).join("")}</select></div>
     </div>
     <div style="margin-bottom:14px"><label class="lbl">備註</label><input class="inp" id="edf-note" value="${esc(o.note||"")}"></div>
+    ${photoInput("edf-photos")}
     <div style="display:flex;gap:10px">
       <button class="accent-btn" style="flex:1;padding:11px" onclick="submitEditOrder('${o.id}')">💾 儲存變更</button>
       <button class="icon-btn" style="flex:1;padding:11px;text-align:center" onclick="closeModal()">取消</button>
     </div>
     ${currentUserRole==="admin"?`<button style="background:#7F1D1D;color:#FCA5A5;border:1px solid #991B1B;border-radius:10px;padding:10px;width:100%;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;margin-top:10px" onclick="deleteOrder('${o.id}')">🗑️ 刪除此工單</button>`:""}`;
   $("modal-wrap").classList.add("show");
+  setTimeout(()=>{
+    if(o.photos&&o.photos.length){
+      const el=$("edf-photos");
+      if(el){el.value=JSON.stringify(o.photos);renderPhotoPreview("edf-photos",o.photos);}
+    }
+  },50);
 }
 async function submitEditOrder(id){
   const g=fid=>$(fid)?.value||"";
   const customer=g("edf-customer"), part=g("edf-part"), qty=g("edf-qty");
   if(!customer||!part||!qty){showToast("請填必填欄位","error");return;}
-  const updates={customer,part,qty:parseInt(qty),material:g("edf-material"),stage:g("edf-stage"),priority:g("edf-priority"),deadline:g("edf-deadline"),amount:parseFloat(g("edf-amount"))||0,note:g("edf-note"),industry:g("edf-industry"),status:g("edf-status")};
+  const photos=JSON.parse(g("edf-photos")||"[]");
+  const updates={customer,part,qty:parseInt(qty),material:g("edf-material"),stage:g("edf-stage"),priority:g("edf-priority"),deadline:g("edf-deadline"),amount:parseFloat(g("edf-amount"))||0,note:g("edf-note"),industry:g("edf-industry"),status:g("edf-status"),photos};
   try{
     await db.collection("orders").doc(id).set(updates,{merge:true});
     pushNotif(`工單 ${id} 已更新`,"success");
