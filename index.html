@@ -263,6 +263,8 @@ const TABS=[
   {id:"flow",label:"看板",icon:"⟳",roles:["admin","manager","operator","floor"]},
   {id:"quotes",label:"報價",icon:"¥",roles:["admin","manager","sales"]},
   {id:"service",label:"售服",icon:"🔧",roles:["admin","manager","operator","floor","sales"]},
+  {id:"receipts",label:"簽收單",icon:"📋",roles:["admin","manager","operator","floor","sales"]},
+  {id:"accounting",label:"會計",icon:"💰",roles:["admin","manager"]},
   {id:"line",label:"LINE",icon:"◉",roles:["admin","manager"]},
   {id:"analytics",label:"分析",icon:"◎",roles:["admin","manager"]},
   {id:"users",label:"使用者",icon:"👥",roles:["admin"]},
@@ -274,8 +276,12 @@ let state={
   quotes:[],
   users:[],
   serviceReports:[],
+  receipts:[],
+  invoices:[],
+  payments:[],
   lineLog:[],
   notifications:[],
+  acctTab:"daily",acctDateFilter:"",
   unread:0,
   orderSearch:"",orderStageFilter:"all",orderPriorityFilter:"all",
   quoteFormOpen:false,
@@ -591,6 +597,39 @@ async function subscribeToFirestore(){
       render();
     }, err=>console.error("訂閱售服失敗:",err));
 
+  db.collection("receipts")
+    .onSnapshot(snap=>{
+      state.receipts=snap.docs.map(d=>({...d.data(),id:d.id}))
+        .sort((a,b)=>{
+          const aTime=(a.createdTime?.toDate?.()?.getTime?.())||0;
+          const bTime=(b.createdTime?.toDate?.()?.getTime?.())||0;
+          return bTime-aTime;
+        });
+      render();
+    }, err=>console.error("訂閱簽收單失敗:",err));
+
+  db.collection("invoices")
+    .onSnapshot(snap=>{
+      state.invoices=snap.docs.map(d=>({...d.data(),id:d.id}))
+        .sort((a,b)=>{
+          const aTime=(a.createdTime?.toDate?.()?.getTime?.())||0;
+          const bTime=(b.createdTime?.toDate?.()?.getTime?.())||0;
+          return bTime-aTime;
+        });
+      render();
+    }, err=>console.error("訂閱發票失敗:",err));
+
+  db.collection("payments")
+    .onSnapshot(snap=>{
+      state.payments=snap.docs.map(d=>({...d.data(),id:d.id}))
+        .sort((a,b)=>{
+          const aTime=(a.createdTime?.toDate?.()?.getTime?.())||0;
+          const bTime=(b.createdTime?.toDate?.()?.getTime?.())||0;
+          return bTime-aTime;
+        });
+      render();
+    }, err=>console.error("訂閱收付款失敗:",err));
+
   if(currentUserRole==="admin"){
     await loadAllUsers();
   }
@@ -618,6 +657,8 @@ function render(){
   else if(state.tab==="flow") c.innerHTML=renderFlow();
   else if(state.tab==="quotes") c.innerHTML=renderQuotes();
   else if(state.tab==="service") c.innerHTML=renderService();
+  else if(state.tab==="receipts") c.innerHTML=renderReceipts();
+  else if(state.tab==="accounting") c.innerHTML=renderAccounting();
   else if(state.tab==="line") c.innerHTML=renderLine();
   else if(state.tab==="analytics") c.innerHTML=renderAnalytics();
   else if(state.tab==="users") c.innerHTML=renderUsers();
@@ -650,8 +691,8 @@ function renderDashboard(){
   const kpis=[
     {label:"進行中工單",val:active,sub:`${delayed}件延誤`,color:"#3B82F6",tab:"orders"},
     {label:"待確認報價",val:pending,sub:"點擊處理",color:"#8B5CF6",tab:"quotes"},
-    {label:"LINE已送出",val:state.lineLog.length,sub:"本系統累計",color:"#06C755",tab:"line"},
-    {label:"完成金額",val:`$${Math.round(revenue/1000)}K`,sub:"NT$",color:"#F59E0B",tab:"analytics"},
+    {label:"待簽收",val:state.receipts.filter(r=>r.status==="待簽收").length,sub:`${state.receipts.filter(r=>r.paymentStatus!=="已收款").length}筆未收款`,color:"#06C755",tab:"receipts"},
+    {label:"完成金額",val:`$${Math.round(revenue/1000)}K`,sub:"NT$",color:"#F59E0B",tab:"accounting"},
   ];
   return `
   <div class="kpi-grid">${kpis.map((k,i)=>`
@@ -993,6 +1034,549 @@ async function deleteService(id){
     pushNotif(`售服 ${id} 已刪除`,"warn");showToast("已刪除");closeModal();
   }catch(e){showToast("刪除失敗","error");}
 }
+// ─── 簽收單系統 ─────────────────────────────────────────────
+const RCP_STATUS={"待簽收":"#F59E0B","已簽收":"#22C55E","退回":"#EF4444","部分簽收":"#3B82F6"};
+function renderReceipts(){
+  const list=state.receipts;
+  const stats={total:list.length,signed:list.filter(r=>r.status==="已簽收").length,pending:list.filter(r=>r.status==="待簽收").length,returned:list.filter(r=>r.status==="退回").length};
+  return `
+  <div class="kpi-grid">
+    <div class="kpi-card" style="border-top:3px solid #F59E0B"><div class="kpi-label">待簽收</div><div class="kpi-val" style="color:#F59E0B">${stats.pending}</div></div>
+    <div class="kpi-card" style="border-top:3px solid #22C55E"><div class="kpi-label">已簽收</div><div class="kpi-val" style="color:#22C55E">${stats.signed}</div></div>
+    <div class="kpi-card" style="border-top:3px solid #EF4444"><div class="kpi-label">退回</div><div class="kpi-val" style="color:#EF4444">${stats.returned}</div></div>
+    <div class="kpi-card" style="border-top:3px solid #3B82F6"><div class="kpi-label">總計</div><div class="kpi-val" style="color:#3B82F6">${stats.total}</div></div>
+  </div>
+  <div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <div class="card-title" style="margin:0">📋 簽收單列表</div>
+      <button class="accent-btn" onclick="openNewReceiptModal()">＋ 新增簽收單</button>
+    </div>
+    ${list.length===0?'<div style="text-align:center;color:var(--muted);padding:20px">尚無簽收單記錄</div>':""}
+    ${list.map(r=>{
+      const d=r.createdTime?.toDate?.();const ds=d?d.toLocaleDateString("zh-TW"):"—";
+      const sc=RCP_STATUS[r.status]||"#64748B";
+      return `<div class="row-item slide-up">
+        <div style="flex:1;min-width:0">
+          <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+            <span class="wo-tag">${r.id}</span>
+            <span style="font-size:13px;font-weight:600">${esc(r.customer)}</span>
+            <span class="pill" style="background:${sc}22;color:${sc};font-size:10px">${r.status}</span>
+          </div>
+          <div style="font-size:11px;color:var(--muted);margin-top:3px">工單: ${esc(r.orderId||"—")} · ${esc(r.part||"")} · ${r.type==="出貨現場"?"📷現場拍照":"📁掃描回傳"} · ${ds}</div>
+          ${r.amount?`<div style="font-size:12px;color:#F59E0B;margin-top:2px">NT$ ${Number(r.amount).toLocaleString()}</div>`:""}
+        </div>
+        <div style="display:flex;gap:4px;flex-shrink:0">
+          <button class="icon-btn" onclick="openViewReceiptModal('${r.id}')">👁</button>
+          ${currentUserRole!=="floor"?`<button class="icon-btn" style="color:#3B82F6" onclick="openEditReceiptModal('${r.id}')">✏️</button>`:""}
+          ${r.status==="待簽收"?`<button class="adv-btn" onclick="confirmReceipt('${r.id}')">✅ 確認簽收</button>`:""}
+        </div>
+      </div>`;
+    }).join("")}
+  </div>`;
+}
+function openNewReceiptModal(){
+  const orderOpts=state.orders.map(o=>`<option value="${o.id}">${o.id} — ${esc(o.customer)} (${esc(o.part)})</option>`).join("");
+  $("modal-box").innerHTML=`
+    <div class="modal-head"><div class="modal-title">📋 新增簽收單</div><button class="close-btn" onclick="closeModal()">✕</button></div>
+    <div class="form-grid">
+      <div><label class="lbl">客戶名稱*</label><input class="inp" id="rcp-customer"></div>
+      <div><label class="lbl">關聯工單</label><select class="inp" id="rcp-orderId" onchange="autoFillReceipt()"><option value="">— 選擇工單 —</option>${orderOpts}</select></div>
+    </div>
+    <div class="form-grid">
+      <div><label class="lbl">品名</label><input class="inp" id="rcp-part"></div>
+      <div><label class="lbl">數量</label><input class="inp" type="number" id="rcp-qty"></div>
+    </div>
+    <div class="form-grid">
+      <div><label class="lbl">金額(NT$)</label><input class="inp" type="number" id="rcp-amount"></div>
+      <div><label class="lbl">簽收方式</label><select class="inp" id="rcp-type"><option>出貨現場</option><option>紙本回收</option></select></div>
+    </div>
+    <div class="form-grid">
+      <div><label class="lbl">收件人</label><input class="inp" id="rcp-receiver"></div>
+      <div><label class="lbl">聯絡電話</label><input class="inp" id="rcp-phone"></div>
+    </div>
+    <div style="margin-bottom:10px"><label class="lbl">備註</label><textarea class="inp" id="rcp-note" rows="2" style="resize:vertical"></textarea></div>
+    ${photoInput("rcp-photos")}
+    <div style="display:flex;gap:10px">
+      <button class="accent-btn" style="flex:1;padding:11px" onclick="submitNewReceipt()">📋 建立簽收單</button>
+      <button class="icon-btn" style="flex:1;padding:11px;text-align:center" onclick="closeModal()">取消</button>
+    </div>`;
+  $("modal-wrap").classList.add("show");
+}
+function autoFillReceipt(){
+  const oid=$("rcp-orderId")?.value;
+  if(!oid)return;
+  const o=state.orders.find(x=>x.id===oid);
+  if(!o)return;
+  const cf=id=>$(id);
+  if(cf("rcp-customer"))cf("rcp-customer").value=o.customer||"";
+  if(cf("rcp-part"))cf("rcp-part").value=o.part||"";
+  if(cf("rcp-qty"))cf("rcp-qty").value=o.qty||"";
+  if(cf("rcp-amount"))cf("rcp-amount").value=o.amount||"";
+}
+async function submitNewReceipt(){
+  const g=id=>$(id)?.value||"";
+  const customer=g("rcp-customer");
+  if(!customer){showToast("請填客戶名稱","error");return;}
+  const rId=`RCP-${String(Date.now()).slice(-6)}`;
+  const photos=JSON.parse(g("rcp-photos")||"[]");
+  const data={customer,orderId:g("rcp-orderId"),part:g("rcp-part"),qty:parseInt(g("rcp-qty"))||0,amount:parseFloat(g("rcp-amount"))||0,type:g("rcp-type"),receiver:g("rcp-receiver"),phone:g("rcp-phone"),note:g("rcp-note"),photos,status:"待簽收",paymentStatus:"未收款",createdTime:firebase.firestore.Timestamp.now(),createdBy:currentUser.uid};
+  try{
+    await db.collection("receipts").doc(rId).set(data);
+    pushNotif(`簽收單 ${rId} 已建立`,"success");showToast("簽收單已建立");closeModal();
+  }catch(e){console.error("建立簽收單失敗:",e);showToast("建立失敗","error");}
+}
+function openViewReceiptModal(id){
+  const r=state.receipts.find(x=>x.id===id);if(!r)return;
+  const d=r.createdTime?.toDate?.();const ds=d?d.toLocaleString("zh-TW"):"—";
+  const signedD=r.signedTime?.toDate?.();const sds=signedD?signedD.toLocaleString("zh-TW"):"—";
+  const sc=RCP_STATUS[r.status]||"#64748B";
+  $("modal-box").innerHTML=`
+    <div class="modal-head"><div class="modal-title">📋 簽收單 ${r.id}</div><button class="close-btn" onclick="closeModal()">✕</button></div>
+    <div style="text-align:center;margin-bottom:14px"><span class="pill" style="background:${sc}22;color:${sc};font-size:14px;padding:6px 16px">${r.status}</span></div>
+    ${[["簽收單號",r.id],["客戶",r.customer],["關聯工單",r.orderId||"—"],["品名",r.part||"—"],["數量",r.qty?`${r.qty} 件`:"—"],["金額",r.amount?`NT$ ${Number(r.amount).toLocaleString()}`:"—"],["簽收方式",r.type||"—"],["收件人",r.receiver||"—"],["聯絡電話",r.phone||"—"],["建立時間",ds],["簽收時間",sds],["收款狀態",r.paymentStatus||"未收款"]].map(([k,v])=>`<div class="detail-row"><span class="detail-key">${k}</span><span class="detail-val">${esc(v)}</span></div>`).join("")}
+    ${r.note?`<div style="margin-top:10px"><div class="lbl">備註</div><div style="background:#0F172A;border-radius:8px;padding:10px;font-size:13px;color:var(--text);margin-top:4px">${esc(r.note)}</div></div>`:""}
+    ${renderPhotos(r.photos)}
+    <button class="icon-btn" style="width:100%;padding:10px;margin-top:14px;text-align:center" onclick="closeModal()">關閉</button>`;
+  $("modal-wrap").classList.add("show");
+}
+function openEditReceiptModal(id){
+  const r=state.receipts.find(x=>x.id===id);if(!r)return;
+  const statusOpts=["待簽收","已簽收","部分簽收","退回"];
+  const payOpts=["未收款","部分收款","已收款"];
+  $("modal-box").innerHTML=`
+    <div class="modal-head"><div class="modal-title">✏️ 編輯簽收單 ${r.id}</div><button class="close-btn" onclick="closeModal()">✕</button></div>
+    <div class="form-grid">
+      <div><label class="lbl">客戶名稱*</label><input class="inp" id="ercp-customer" value="${esc(r.customer)}"></div>
+      <div><label class="lbl">關聯工單</label><input class="inp" id="ercp-orderId" value="${esc(r.orderId||"")}"></div>
+    </div>
+    <div class="form-grid">
+      <div><label class="lbl">品名</label><input class="inp" id="ercp-part" value="${esc(r.part||"")}"></div>
+      <div><label class="lbl">數量</label><input class="inp" type="number" id="ercp-qty" value="${r.qty||""}"></div>
+    </div>
+    <div class="form-grid">
+      <div><label class="lbl">金額(NT$)</label><input class="inp" type="number" id="ercp-amount" value="${r.amount||""}"></div>
+      <div><label class="lbl">簽收狀態</label><select class="inp" id="ercp-status">${statusOpts.map(s=>`<option${r.status===s?" selected":""}>${s}</option>`).join("")}</select></div>
+    </div>
+    <div class="form-grid">
+      <div><label class="lbl">收款狀態</label><select class="inp" id="ercp-payStatus">${payOpts.map(s=>`<option${r.paymentStatus===s?" selected":""}>${s}</option>`).join("")}</select></div>
+      <div><label class="lbl">收件人</label><input class="inp" id="ercp-receiver" value="${esc(r.receiver||"")}"></div>
+    </div>
+    <div style="margin-bottom:10px"><label class="lbl">備註</label><textarea class="inp" id="ercp-note" rows="2" style="resize:vertical">${esc(r.note||"")}</textarea></div>
+    ${photoInput("ercp-photos")}
+    <div style="display:flex;gap:10px">
+      <button class="accent-btn" style="flex:1;padding:11px" onclick="submitEditReceipt('${r.id}')">💾 儲存</button>
+      <button class="icon-btn" style="flex:1;padding:11px;text-align:center" onclick="closeModal()">取消</button>
+    </div>
+    ${currentUserRole==="admin"?`<button style="background:#7F1D1D;color:#FCA5A5;border:1px solid #991B1B;border-radius:10px;padding:10px;width:100%;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;margin-top:10px" onclick="deleteReceipt('${r.id}')">🗑️ 刪除</button>`:""}`;
+  $("modal-wrap").classList.add("show");
+  setTimeout(()=>{
+    if(r.photos&&r.photos.length){
+      const el=$("ercp-photos");
+      if(el){el.value=JSON.stringify(r.photos);renderPhotoPreview("ercp-photos",r.photos);}
+    }
+  },50);
+}
+async function submitEditReceipt(id){
+  const g=fid=>$(fid)?.value||"";
+  const customer=g("ercp-customer");
+  if(!customer){showToast("請填客戶名稱","error");return;}
+  const photos=JSON.parse(g("ercp-photos")||"[]");
+  const updates={customer,orderId:g("ercp-orderId"),part:g("ercp-part"),qty:parseInt(g("ercp-qty"))||0,amount:parseFloat(g("ercp-amount"))||0,status:g("ercp-status"),paymentStatus:g("ercp-payStatus"),receiver:g("ercp-receiver"),note:g("ercp-note"),photos};
+  if(g("ercp-status")==="已簽收"&&!state.receipts.find(x=>x.id===id)?.signedTime){
+    updates.signedTime=firebase.firestore.Timestamp.now();
+  }
+  try{
+    await db.collection("receipts").doc(id).set(updates,{merge:true});
+    pushNotif(`簽收單 ${id} 已更新`,"success");showToast("已更新");closeModal();
+  }catch(e){console.error("更新簽收單失敗:",e);showToast("更新失敗","error");}
+}
+async function confirmReceipt(id){
+  try{
+    await db.collection("receipts").doc(id).set({status:"已簽收",signedTime:firebase.firestore.Timestamp.now()},{merge:true});
+    pushNotif(`簽收單 ${id} 已確認簽收`,"success");showToast("已確認簽收");
+  }catch(e){showToast("簽收失敗","error");}
+}
+async function deleteReceipt(id){
+  if(!confirm(`確定要刪除簽收單 ${id}？`))return;
+  try{
+    await db.collection("receipts").doc(id).delete();
+    pushNotif(`簽收單 ${id} 已刪除`,"warn");showToast("已刪除");closeModal();
+  }catch(e){showToast("刪除失敗","error");}
+}
+// ─── 會計系統 ───────────────────────────────────────────────
+const PAY_TYPES={"應收":"#22C55E","應付":"#EF4444"};
+const PAY_STATUS_COLORS={"未收款":"#F59E0B","部分收款":"#3B82F6","已收款":"#22C55E","未付款":"#F59E0B","部分付款":"#3B82F6","已付款":"#22C55E"};
+const INV_STATUS={"待開立":"#F59E0B","已開立":"#3B82F6","已寄出":"#8B5CF6","已收到":"#22C55E","作廢":"#EF4444"};
+function renderAccounting(){
+  if(currentUserRole!=="admin"&&currentUserRole!=="manager"){
+    return `<div class="card"><div style="padding:20px;text-align:center;color:var(--muted)">只有主管和管理員可以查看會計系統。</div></div>`;
+  }
+  const tabs=[{id:"daily",label:"📊 日報"},{id:"monthly",label:"📈 月報"},{id:"receivable",label:"💵 應收"},{id:"payable",label:"💸 應付"},{id:"invoices",label:"🧾 發票"}];
+  const tabBar=tabs.map(t=>`<button class="chip${state.acctTab===t.id?" on":""}" onclick="state.acctTab='${t.id}';renderContent()">${t.label}</button>`).join("");
+  let content="";
+  if(state.acctTab==="daily") content=renderDailyReport();
+  else if(state.acctTab==="monthly") content=renderMonthlyReport();
+  else if(state.acctTab==="receivable") content=renderReceivable();
+  else if(state.acctTab==="payable") content=renderPayable();
+  else if(state.acctTab==="invoices") content=renderInvoices();
+  return `<div class="card"><div style="display:flex;gap:8px;flex-wrap:wrap">${tabBar}</div></div>${content}`;
+}
+function todayStr(){return new Date().toISOString().slice(0,10);}
+function dateStr(ts){return ts?.toDate?.()?ts.toDate().toISOString().slice(0,10):"";}
+function renderDailyReport(){
+  const today=state.acctDateFilter||todayStr();
+  const dayReceipts=state.receipts.filter(r=>dateStr(r.createdTime)===today);
+  const daySignedReceipts=state.receipts.filter(r=>dateStr(r.signedTime)===today);
+  const dayPayments=state.payments.filter(p=>dateStr(p.createdTime)===today);
+  const dayInvoices=state.invoices.filter(i=>dateStr(i.createdTime)===today);
+  const dayShipped=state.orders.filter(o=>o.stage==="shipping"&&dateStr(o.created)===today);
+  const totalOut=dayReceipts.reduce((s,r)=>s+Number(r.amount||0),0);
+  const totalSigned=daySignedReceipts.reduce((s,r)=>s+Number(r.amount||0),0);
+  const totalReceived=dayPayments.filter(p=>p.type==="應收"&&p.status==="已收款").reduce((s,p)=>s+Number(p.amount||0),0);
+  const totalUnpaid=state.receipts.filter(r=>r.paymentStatus!=="已收款").reduce((s,r)=>s+Number(r.amount||0),0);
+  return `
+  <div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+      <div class="card-title" style="margin:0">📊 每日彙整報表</div>
+      <input type="date" class="inp" style="width:160px" value="${today}" onchange="state.acctDateFilter=this.value;renderContent()">
+    </div>
+    <div class="kpi-grid">
+      <div class="kpi-card" style="border-top:3px solid #F59E0B"><div class="kpi-label">當日出貨</div><div class="kpi-val" style="color:#F59E0B;font-size:20px">${dayReceipts.length} 筆</div><div class="kpi-sub">NT$ ${totalOut.toLocaleString()}</div></div>
+      <div class="kpi-card" style="border-top:3px solid #22C55E"><div class="kpi-label">當日簽收</div><div class="kpi-val" style="color:#22C55E;font-size:20px">${daySignedReceipts.length} 筆</div><div class="kpi-sub">NT$ ${totalSigned.toLocaleString()}</div></div>
+      <div class="kpi-card" style="border-top:3px solid #3B82F6"><div class="kpi-label">當日收款</div><div class="kpi-val" style="color:#3B82F6;font-size:20px">${dayPayments.filter(p=>p.type==="應收").length} 筆</div><div class="kpi-sub">NT$ ${totalReceived.toLocaleString()}</div></div>
+      <div class="kpi-card" style="border-top:3px solid #EF4444"><div class="kpi-label">累計未收款</div><div class="kpi-val" style="color:#EF4444;font-size:20px">${state.receipts.filter(r=>r.paymentStatus!=="已收款").length} 筆</div><div class="kpi-sub">NT$ ${totalUnpaid.toLocaleString()}</div></div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-title">📋 當日簽收單明細</div>
+    ${dayReceipts.length===0?'<div style="text-align:center;color:var(--muted);padding:12px 0;font-size:13px">今日無簽收單記錄</div>':""}
+    <div style="overflow-x:auto">${dayReceipts.length>0?`<table style="width:100%;font-size:12px;border-collapse:collapse">
+      <tr style="color:var(--muted);text-align:left;border-bottom:1px solid var(--border2)"><th style="padding:8px 6px">單號</th><th style="padding:8px 6px">客戶</th><th style="padding:8px 6px">品名</th><th style="padding:8px 6px">金額</th><th style="padding:8px 6px">簽收</th><th style="padding:8px 6px">收款</th></tr>
+      ${dayReceipts.map(r=>`<tr style="border-bottom:1px solid var(--border)">
+        <td style="padding:8px 6px"><span class="wo-tag">${r.id}</span></td>
+        <td style="padding:8px 6px">${esc(r.customer)}</td>
+        <td style="padding:8px 6px">${esc(r.part||"—")}</td>
+        <td style="padding:8px 6px;color:#F59E0B">$${Number(r.amount||0).toLocaleString()}</td>
+        <td style="padding:8px 6px"><span style="color:${RCP_STATUS[r.status]||"#64748B"}">${r.status}</span></td>
+        <td style="padding:8px 6px"><span style="color:${PAY_STATUS_COLORS[r.paymentStatus]||"#64748B"}">${r.paymentStatus||"未收款"}</span></td>
+      </tr>`).join("")}
+      <tr style="font-weight:700;border-top:2px solid var(--border2)"><td style="padding:8px 6px" colspan="3">合計</td><td style="padding:8px 6px;color:#F59E0B">$${totalOut.toLocaleString()}</td><td colspan="2"></td></tr>
+    </table>`:""}</div>
+  </div>
+  <div class="card">
+    <div class="card-title">💵 當日收付款記錄</div>
+    ${dayPayments.length===0?'<div style="text-align:center;color:var(--muted);padding:12px 0;font-size:13px">今日無收付款記錄</div>':""}
+    ${dayPayments.map(p=>{
+      const tc=p.type==="應收"?"#22C55E":"#EF4444";
+      return `<div class="row-item"><div style="flex:1"><span style="color:${tc};font-weight:700">${p.type}</span> · ${esc(p.customer)} · ${esc(p.description||"")}</div><div style="color:${tc};font-weight:700;font-size:14px">NT$ ${Number(p.amount||0).toLocaleString()}</div></div>`;
+    }).join("")}
+  </div>`;
+}
+function renderMonthlyReport(){
+  const now=new Date();const ym=state.acctDateFilter?state.acctDateFilter.slice(0,7):`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}`;
+  const monthReceipts=state.receipts.filter(r=>(dateStr(r.createdTime)||"").startsWith(ym));
+  const monthPayments=state.payments.filter(p=>(dateStr(p.createdTime)||"").startsWith(ym));
+  const totalShipped=monthReceipts.reduce((s,r)=>s+Number(r.amount||0),0);
+  const totalReceived=monthPayments.filter(p=>p.type==="應收"&&p.status==="已收款").reduce((s,p)=>s+Number(p.amount||0),0);
+  const totalPaid=monthPayments.filter(p=>p.type==="應付"&&p.status==="已付款").reduce((s,p)=>s+Number(p.amount||0),0);
+  const allUnpaid=state.receipts.filter(r=>r.paymentStatus!=="已收款");
+  const overdueCount=allUnpaid.filter(r=>{const d=r.createdTime?.toDate?.();return d&&(now-d)/(86400000)>30;}).length;
+  // group by customer
+  const byCustomer={};monthReceipts.forEach(r=>{if(!byCustomer[r.customer])byCustomer[r.customer]={count:0,amount:0,paid:0};byCustomer[r.customer].count++;byCustomer[r.customer].amount+=Number(r.amount||0);});
+  monthPayments.filter(p=>p.type==="應收"&&p.status==="已收款").forEach(p=>{if(byCustomer[p.customer])byCustomer[p.customer].paid+=Number(p.amount||0);});
+  return `
+  <div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+      <div class="card-title" style="margin:0">📈 月度彙整報表 (${ym})</div>
+      <input type="month" class="inp" style="width:160px" value="${ym}" onchange="state.acctDateFilter=this.value+'-01';renderContent()">
+    </div>
+    <div class="kpi-grid">
+      <div class="kpi-card" style="border-top:3px solid #F59E0B"><div class="kpi-label">本月出貨</div><div class="kpi-val" style="color:#F59E0B;font-size:18px">$${Math.round(totalShipped/1000)}K</div><div class="kpi-sub">${monthReceipts.length} 筆</div></div>
+      <div class="kpi-card" style="border-top:3px solid #22C55E"><div class="kpi-label">本月收款</div><div class="kpi-val" style="color:#22C55E;font-size:18px">$${Math.round(totalReceived/1000)}K</div><div class="kpi-sub">已入帳</div></div>
+      <div class="kpi-card" style="border-top:3px solid #EF4444"><div class="kpi-label">本月付款</div><div class="kpi-val" style="color:#EF4444;font-size:18px">$${Math.round(totalPaid/1000)}K</div><div class="kpi-sub">已支出</div></div>
+      <div class="kpi-card" style="border-top:3px solid #8B5CF6"><div class="kpi-label">逾期30天</div><div class="kpi-val" style="color:#8B5CF6;font-size:18px">${overdueCount}</div><div class="kpi-sub">筆未收</div></div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-title">👥 客戶別應收統計</div>
+    ${Object.keys(byCustomer).length===0?'<div style="text-align:center;color:var(--muted);padding:12px 0;font-size:13px">本月無出貨記錄</div>':""}
+    <div style="overflow-x:auto">${Object.keys(byCustomer).length>0?`<table style="width:100%;font-size:12px;border-collapse:collapse">
+      <tr style="color:var(--muted);text-align:left;border-bottom:1px solid var(--border2)"><th style="padding:8px 6px">客戶</th><th style="padding:8px 6px">出貨筆數</th><th style="padding:8px 6px">應收金額</th><th style="padding:8px 6px">已收款</th><th style="padding:8px 6px">未收款</th></tr>
+      ${Object.entries(byCustomer).map(([c,d])=>`<tr style="border-bottom:1px solid var(--border)">
+        <td style="padding:8px 6px;font-weight:600">${esc(c)}</td>
+        <td style="padding:8px 6px">${d.count}</td>
+        <td style="padding:8px 6px;color:#F59E0B">$${d.amount.toLocaleString()}</td>
+        <td style="padding:8px 6px;color:#22C55E">$${d.paid.toLocaleString()}</td>
+        <td style="padding:8px 6px;color:#EF4444">$${(d.amount-d.paid).toLocaleString()}</td>
+      </tr>`).join("")}
+    </table>`:""}</div>
+  </div>`;
+}
+function renderReceivable(){
+  const unpaid=state.receipts.filter(r=>r.paymentStatus!=="已收款");
+  const totalUnpaid=unpaid.reduce((s,r)=>s+Number(r.amount||0),0);
+  return `
+  <div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <div class="card-title" style="margin:0">💵 應收帳款</div>
+      <div style="font-size:18px;font-weight:800;color:#F59E0B">未收 NT$ ${totalUnpaid.toLocaleString()}</div>
+    </div>
+    <button class="accent-btn" style="margin-bottom:14px" onclick="openNewPaymentModal('應收')">＋ 新增收款記錄</button>
+    ${unpaid.length===0?'<div style="text-align:center;color:var(--muted);padding:12px 0;font-size:13px">無未收款項目</div>':""}
+    ${unpaid.map(r=>{
+      const d=r.createdTime?.toDate?.();const days=d?Math.floor((new Date()-d)/86400000):0;
+      const urgent=days>30;
+      return `<div class="row-item">
+        <div style="flex:1;min-width:0">
+          <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+            <span class="wo-tag">${r.id}</span>
+            <span style="font-size:13px;font-weight:600">${esc(r.customer)}</span>
+            ${urgent?'<span class="pill" style="background:#7F1D1D;color:#FCA5A5;font-size:10px">逾期'+days+'天</span>':""}
+            <span class="pill" style="background:${PAY_STATUS_COLORS[r.paymentStatus]||"#F59E0B"}22;color:${PAY_STATUS_COLORS[r.paymentStatus]||"#F59E0B"};font-size:10px">${r.paymentStatus||"未收款"}</span>
+          </div>
+          <div style="font-size:11px;color:var(--muted);margin-top:3px">${esc(r.part||"")} · 工單:${esc(r.orderId||"—")}</div>
+        </div>
+        <div style="display:flex;gap:6px;align-items:center;flex-shrink:0">
+          <span style="font-size:14px;font-weight:700;color:#F59E0B">$${Number(r.amount||0).toLocaleString()}</span>
+          <button class="adv-btn" onclick="markReceiptPaid('${r.id}')">💰收款</button>
+        </div>
+      </div>`;
+    }).join("")}
+  </div>
+  <div class="card">
+    <div class="card-title">💵 收款歷史</div>
+    ${state.payments.filter(p=>p.type==="應收").slice(0,20).map(p=>{
+      const d=p.createdTime?.toDate?.();const ds=d?d.toLocaleDateString("zh-TW"):"—";
+      return `<div class="row-item"><div style="flex:1"><span style="font-weight:600">${esc(p.customer)}</span> · ${esc(p.description||"")} · <span style="color:var(--muted)">${ds}</span></div><div style="color:#22C55E;font-weight:700">+$${Number(p.amount||0).toLocaleString()}</div></div>`;
+    }).join("")}
+    ${state.payments.filter(p=>p.type==="應收").length===0?'<div style="text-align:center;color:var(--muted);padding:12px 0;font-size:13px">尚無收款記錄</div>':""}
+  </div>`;
+}
+async function markReceiptPaid(id){
+  const r=state.receipts.find(x=>x.id===id);if(!r)return;
+  if(!confirm(`確認已收到 ${r.customer} 的 NT$ ${Number(r.amount||0).toLocaleString()} 款項？`))return;
+  const payId=`PAY-${String(Date.now()).slice(-6)}`;
+  try{
+    await db.collection("receipts").doc(id).set({paymentStatus:"已收款"},{merge:true});
+    await db.collection("payments").doc(payId).set({type:"應收",customer:r.customer,receiptId:id,orderId:r.orderId||"",amount:r.amount||0,description:`簽收單 ${id} 收款`,status:"已收款",createdTime:firebase.firestore.Timestamp.now(),createdBy:currentUser.uid});
+    pushNotif(`${r.customer} 收款 NT$ ${Number(r.amount||0).toLocaleString()}`,"success");showToast("已記錄收款");
+  }catch(e){showToast("收款記錄失敗","error");}
+}
+function renderPayable(){
+  const payables=state.payments.filter(p=>p.type==="應付");
+  const unpaid=payables.filter(p=>p.status!=="已付款");
+  const totalUnpaid=unpaid.reduce((s,p)=>s+Number(p.amount||0),0);
+  return `
+  <div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <div class="card-title" style="margin:0">💸 應付帳款</div>
+      <div style="font-size:18px;font-weight:800;color:#EF4444">未付 NT$ ${totalUnpaid.toLocaleString()}</div>
+    </div>
+    <button class="accent-btn" style="margin-bottom:14px" onclick="openNewPaymentModal('應付')">＋ 新增應付款項</button>
+    ${unpaid.length===0?'<div style="text-align:center;color:var(--muted);padding:12px 0;font-size:13px">無未付款項目</div>':""}
+    ${unpaid.map(p=>{
+      const d=p.createdTime?.toDate?.();const ds=d?d.toLocaleDateString("zh-TW"):"—";
+      return `<div class="row-item">
+        <div style="flex:1;min-width:0">
+          <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+            <span class="wo-tag">${p.id}</span>
+            <span style="font-size:13px;font-weight:600">${esc(p.customer)}</span>
+            <span class="pill" style="background:${PAY_STATUS_COLORS[p.status]||"#F59E0B"}22;color:${PAY_STATUS_COLORS[p.status]||"#F59E0B"};font-size:10px">${p.status}</span>
+          </div>
+          <div style="font-size:11px;color:var(--muted);margin-top:3px">${esc(p.description||"")} · ${ds}</div>
+        </div>
+        <div style="display:flex;gap:6px;align-items:center;flex-shrink:0">
+          <span style="font-size:14px;font-weight:700;color:#EF4444">$${Number(p.amount||0).toLocaleString()}</span>
+          <button class="adv-btn" onclick="markPaymentDone('${p.id}')">💸付款</button>
+        </div>
+      </div>`;
+    }).join("")}
+  </div>
+  <div class="card">
+    <div class="card-title">💸 付款歷史</div>
+    ${payables.filter(p=>p.status==="已付款").slice(0,20).map(p=>{
+      const d=p.createdTime?.toDate?.();const ds=d?d.toLocaleDateString("zh-TW"):"—";
+      return `<div class="row-item"><div style="flex:1"><span style="font-weight:600">${esc(p.customer)}</span> · ${esc(p.description||"")} · <span style="color:var(--muted)">${ds}</span></div><div style="color:#EF4444;font-weight:700">-$${Number(p.amount||0).toLocaleString()}</div></div>`;
+    }).join("")}
+    ${payables.filter(p=>p.status==="已付款").length===0?'<div style="text-align:center;color:var(--muted);padding:12px 0;font-size:13px">尚無付款記錄</div>':""}
+  </div>`;
+}
+async function markPaymentDone(id){
+  const p=state.payments.find(x=>x.id===id);if(!p)return;
+  if(!confirm(`確認已付款 NT$ ${Number(p.amount||0).toLocaleString()} 給 ${p.customer}？`))return;
+  try{
+    await db.collection("payments").doc(id).set({status:"已付款",paidTime:firebase.firestore.Timestamp.now()},{merge:true});
+    pushNotif(`已付款 ${p.customer} NT$ ${Number(p.amount||0).toLocaleString()}`,"success");showToast("已記錄付款");
+  }catch(e){showToast("記錄失敗","error");}
+}
+function openNewPaymentModal(type){
+  const isReceivable=type==="應收";
+  $("modal-box").innerHTML=`
+    <div class="modal-head"><div class="modal-title">${isReceivable?"💵 新增收款記錄":"💸 新增應付款項"}</div><button class="close-btn" onclick="closeModal()">✕</button></div>
+    <div class="form-grid">
+      <div><label class="lbl">${isReceivable?"客戶":"供應商"}名稱*</label><input class="inp" id="pay-customer"></div>
+      <div><label class="lbl">金額(NT$)*</label><input class="inp" type="number" id="pay-amount"></div>
+    </div>
+    <div class="form-grid">
+      <div><label class="lbl">關聯工單/簽收單</label><input class="inp" id="pay-ref"></div>
+      <div><label class="lbl">狀態</label><select class="inp" id="pay-status">${isReceivable?'<option>已收款</option><option>部分收款</option>':'<option>未付款</option><option>已付款</option><option>部分付款</option>'}</select></div>
+    </div>
+    <div style="margin-bottom:14px"><label class="lbl">說明</label><textarea class="inp" id="pay-desc" rows="2" style="resize:vertical"></textarea></div>
+    ${photoInput("pay-photos")}
+    <div style="display:flex;gap:10px">
+      <button class="accent-btn" style="flex:1;padding:11px" onclick="submitNewPayment('${type}')">💾 儲存</button>
+      <button class="icon-btn" style="flex:1;padding:11px;text-align:center" onclick="closeModal()">取消</button>
+    </div>`;
+  $("modal-wrap").classList.add("show");
+}
+async function submitNewPayment(type){
+  const g=id=>$(id)?.value||"";
+  const customer=g("pay-customer"),amount=g("pay-amount");
+  if(!customer||!amount){showToast("請填必填欄位","error");return;}
+  const payId=`PAY-${String(Date.now()).slice(-6)}`;
+  const photos=JSON.parse(g("pay-photos")||"[]");
+  const data={type,customer,amount:parseFloat(amount),ref:g("pay-ref"),status:g("pay-status"),description:g("pay-desc"),photos,createdTime:firebase.firestore.Timestamp.now(),createdBy:currentUser.uid};
+  try{
+    await db.collection("payments").doc(payId).set(data);
+    pushNotif(`${type}記錄 ${payId} 已建立`,"success");showToast("已建立");closeModal();
+  }catch(e){showToast("建立失敗","error");}
+}
+function renderInvoices(){
+  const list=state.invoices;
+  return `
+  <div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <div class="card-title" style="margin:0">🧾 發票管理</div>
+      <button class="accent-btn" onclick="openNewInvoiceModal()">＋ 新增發票</button>
+    </div>
+    ${list.length===0?'<div style="text-align:center;color:var(--muted);padding:20px">尚無發票記錄</div>':""}
+    ${list.map(inv=>{
+      const d=inv.createdTime?.toDate?.();const ds=d?d.toLocaleDateString("zh-TW"):"—";
+      const sc=INV_STATUS[inv.status]||"#64748B";
+      return `<div class="row-item slide-up">
+        <div style="flex:1;min-width:0">
+          <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+            <span class="wo-tag">${inv.id}</span>
+            <span style="font-size:13px;font-weight:600">${esc(inv.customer)}</span>
+            <span class="pill" style="background:${sc}22;color:${sc};font-size:10px">${inv.status}</span>
+            <span class="pill" style="background:${inv.direction==="銷項"?"#22C55E22":"#EF444422"};color:${inv.direction==="銷項"?"#22C55E":"#EF4444"};font-size:10px">${inv.direction}</span>
+          </div>
+          <div style="font-size:11px;color:var(--muted);margin-top:3px">發票號碼: ${esc(inv.invoiceNo||"—")} · ${esc(inv.description||"")} · ${ds}</div>
+        </div>
+        <div style="display:flex;gap:6px;align-items:center;flex-shrink:0">
+          <span style="font-size:14px;font-weight:700;color:${inv.direction==="銷項"?"#22C55E":"#EF4444"}">$${Number(inv.amount||0).toLocaleString()}</span>
+          <button class="icon-btn" onclick="openViewInvoiceModal('${inv.id}')">👁</button>
+          <button class="icon-btn" style="color:#3B82F6" onclick="openEditInvoiceModal('${inv.id}')">✏️</button>
+        </div>
+      </div>`;
+    }).join("")}
+  </div>`;
+}
+function openNewInvoiceModal(){
+  $("modal-box").innerHTML=`
+    <div class="modal-head"><div class="modal-title">🧾 新增發票</div><button class="close-btn" onclick="closeModal()">✕</button></div>
+    <div class="form-grid">
+      <div><label class="lbl">客戶/供應商*</label><input class="inp" id="inv-customer"></div>
+      <div><label class="lbl">發票號碼</label><input class="inp" id="inv-no" placeholder="AB-12345678"></div>
+    </div>
+    <div class="form-grid">
+      <div><label class="lbl">方向</label><select class="inp" id="inv-direction"><option>銷項</option><option>進項</option></select></div>
+      <div><label class="lbl">金額(NT$)*</label><input class="inp" type="number" id="inv-amount"></div>
+    </div>
+    <div class="form-grid">
+      <div><label class="lbl">稅額(NT$)</label><input class="inp" type="number" id="inv-tax"></div>
+      <div><label class="lbl">狀態</label><select class="inp" id="inv-status">${Object.keys(INV_STATUS).map(s=>`<option>${s}</option>`).join("")}</select></div>
+    </div>
+    <div class="form-grid">
+      <div><label class="lbl">關聯工單/簽收單</label><input class="inp" id="inv-ref"></div>
+      <div><label class="lbl">發票日期</label><input class="inp" type="date" id="inv-date" value="${todayStr()}"></div>
+    </div>
+    <div style="margin-bottom:10px"><label class="lbl">說明</label><textarea class="inp" id="inv-desc" rows="2" style="resize:vertical"></textarea></div>
+    ${photoInput("inv-photos")}
+    <div style="display:flex;gap:10px">
+      <button class="accent-btn" style="flex:1;padding:11px" onclick="submitNewInvoice()">🧾 建立發票</button>
+      <button class="icon-btn" style="flex:1;padding:11px;text-align:center" onclick="closeModal()">取消</button>
+    </div>`;
+  $("modal-wrap").classList.add("show");
+}
+async function submitNewInvoice(){
+  const g=id=>$(id)?.value||"";
+  const customer=g("inv-customer"),amount=g("inv-amount");
+  if(!customer||!amount){showToast("請填必填欄位","error");return;}
+  const invId=`INV-${String(Date.now()).slice(-6)}`;
+  const photos=JSON.parse(g("inv-photos")||"[]");
+  const data={customer,invoiceNo:g("inv-no"),direction:g("inv-direction"),amount:parseFloat(amount),tax:parseFloat(g("inv-tax"))||0,status:g("inv-status"),ref:g("inv-ref"),invoiceDate:g("inv-date"),description:g("inv-desc"),photos,createdTime:firebase.firestore.Timestamp.now(),createdBy:currentUser.uid};
+  try{
+    await db.collection("invoices").doc(invId).set(data);
+    pushNotif(`發票 ${invId} 已建立`,"success");showToast("發票已建立");closeModal();
+  }catch(e){showToast("建立失敗","error");}
+}
+function openViewInvoiceModal(id){
+  const inv=state.invoices.find(x=>x.id===id);if(!inv)return;
+  const d=inv.createdTime?.toDate?.();const ds=d?d.toLocaleString("zh-TW"):"—";
+  const sc=INV_STATUS[inv.status]||"#64748B";
+  $("modal-box").innerHTML=`
+    <div class="modal-head"><div class="modal-title">🧾 發票 ${inv.id}</div><button class="close-btn" onclick="closeModal()">✕</button></div>
+    ${[["發票編號",inv.id],["發票號碼",inv.invoiceNo||"—"],["客戶/供應商",inv.customer],["方向",inv.direction],["金額","NT$ "+Number(inv.amount||0).toLocaleString()],["稅額","NT$ "+Number(inv.tax||0).toLocaleString()],["含稅合計","NT$ "+Number((inv.amount||0)+(inv.tax||0)).toLocaleString()],["狀態",inv.status],["發票日期",inv.invoiceDate||"—"],["關聯單號",inv.ref||"—"],["建立時間",ds]].map(([k,v])=>`<div class="detail-row"><span class="detail-key">${k}</span><span class="detail-val">${esc(String(v))}</span></div>`).join("")}
+    ${inv.description?`<div style="margin-top:10px"><div class="lbl">說明</div><div style="background:#0F172A;border-radius:8px;padding:10px;font-size:13px;color:var(--text);margin-top:4px">${esc(inv.description)}</div></div>`:""}
+    ${renderPhotos(inv.photos)}
+    <button class="icon-btn" style="width:100%;padding:10px;margin-top:14px;text-align:center" onclick="closeModal()">關閉</button>`;
+  $("modal-wrap").classList.add("show");
+}
+function openEditInvoiceModal(id){
+  const inv=state.invoices.find(x=>x.id===id);if(!inv)return;
+  $("modal-box").innerHTML=`
+    <div class="modal-head"><div class="modal-title">✏️ 編輯發票 ${inv.id}</div><button class="close-btn" onclick="closeModal()">✕</button></div>
+    <div class="form-grid">
+      <div><label class="lbl">客戶/供應商*</label><input class="inp" id="einv-customer" value="${esc(inv.customer)}"></div>
+      <div><label class="lbl">發票號碼</label><input class="inp" id="einv-no" value="${esc(inv.invoiceNo||"")}"></div>
+    </div>
+    <div class="form-grid">
+      <div><label class="lbl">方向</label><select class="inp" id="einv-direction"><option${inv.direction==="銷項"?" selected":""}>銷項</option><option${inv.direction==="進項"?" selected":""}>進項</option></select></div>
+      <div><label class="lbl">金額(NT$)*</label><input class="inp" type="number" id="einv-amount" value="${inv.amount||""}"></div>
+    </div>
+    <div class="form-grid">
+      <div><label class="lbl">稅額(NT$)</label><input class="inp" type="number" id="einv-tax" value="${inv.tax||""}"></div>
+      <div><label class="lbl">狀態</label><select class="inp" id="einv-status">${Object.keys(INV_STATUS).map(s=>`<option${inv.status===s?" selected":""}>${s}</option>`).join("")}</select></div>
+    </div>
+    <div class="form-grid">
+      <div><label class="lbl">關聯單號</label><input class="inp" id="einv-ref" value="${esc(inv.ref||"")}"></div>
+      <div><label class="lbl">發票日期</label><input class="inp" type="date" id="einv-date" value="${inv.invoiceDate||""}"></div>
+    </div>
+    <div style="margin-bottom:10px"><label class="lbl">說明</label><textarea class="inp" id="einv-desc" rows="2" style="resize:vertical">${esc(inv.description||"")}</textarea></div>
+    ${photoInput("einv-photos")}
+    <div style="display:flex;gap:10px">
+      <button class="accent-btn" style="flex:1;padding:11px" onclick="submitEditInvoice('${inv.id}')">💾 儲存</button>
+      <button class="icon-btn" style="flex:1;padding:11px;text-align:center" onclick="closeModal()">取消</button>
+    </div>
+    ${currentUserRole==="admin"?`<button style="background:#7F1D1D;color:#FCA5A5;border:1px solid #991B1B;border-radius:10px;padding:10px;width:100%;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;margin-top:10px" onclick="deleteInvoice('${inv.id}')">🗑️ 刪除</button>`:""}`;
+  $("modal-wrap").classList.add("show");
+  setTimeout(()=>{
+    if(inv.photos&&inv.photos.length){
+      const el=$("einv-photos");
+      if(el){el.value=JSON.stringify(inv.photos);renderPhotoPreview("einv-photos",inv.photos);}
+    }
+  },50);
+}
+async function submitEditInvoice(id){
+  const g=fid=>$(fid)?.value||"";
+  const customer=g("einv-customer"),amount=g("einv-amount");
+  if(!customer||!amount){showToast("請填必填欄位","error");return;}
+  const photos=JSON.parse(g("einv-photos")||"[]");
+  const updates={customer,invoiceNo:g("einv-no"),direction:g("einv-direction"),amount:parseFloat(amount),tax:parseFloat(g("einv-tax"))||0,status:g("einv-status"),ref:g("einv-ref"),invoiceDate:g("einv-date"),description:g("einv-desc"),photos};
+  try{
+    await db.collection("invoices").doc(id).set(updates,{merge:true});
+    pushNotif(`發票 ${id} 已更新`,"success");showToast("已更新");closeModal();
+  }catch(e){showToast("更新失敗","error");}
+}
+async function deleteInvoice(id){
+  if(!confirm(`確定要刪除發票 ${id}？`))return;
+  try{
+    await db.collection("invoices").doc(id).delete();
+    pushNotif(`發票 ${id} 已刪除`,"warn");showToast("已刪除");closeModal();
+  }catch(e){showToast("刪除失敗","error");}
+}
+// ─── END ACCOUNTING ─────────────────────────────────────────
 function renderLine(){
   if(currentUserRole==="sales"||currentUserRole==="operator"||currentUserRole==="floor")return `<div class="card"><div style="padding:20px;text-align:center;color:var(--muted)">只有主管和管理員可以管理 LINE 通知。</div></div>`;
   const TYPES=[{id:"stageAdvance",l:"製程推進通知"},{id:"delay",l:"延誤警示"},{id:"quoteReady",l:"報價通知"},{id:"shipping",l:"出貨通知"},{id:"custom",l:"自訂訊息"}];
