@@ -260,11 +260,11 @@ const STATUS_COLOR={"待處理":"#F59E0B","進行中":"#3B82F6","完成":"#22C55
 const TABS=[
   {id:"dashboard",label:"儀表板",icon:"◈",roles:["admin","manager","operator","floor","sales"]},
   {id:"orders",label:"工單",icon:"⊞",roles:["admin","manager","operator","floor"]},
+  {id:"receipts",label:"簽收單",icon:"📋",roles:["admin","manager","operator","floor","sales"]},
+  {id:"accounting",label:"會計",icon:"💰",roles:["admin","manager"]},
   {id:"flow",label:"看板",icon:"⟳",roles:["admin","manager","operator","floor"]},
   {id:"quotes",label:"報價",icon:"¥",roles:["admin","manager","sales"]},
   {id:"service",label:"售服",icon:"🔧",roles:["admin","manager","operator","floor","sales"]},
-  {id:"receipts",label:"簽收單",icon:"📋",roles:["admin","manager","operator","floor","sales"]},
-  {id:"accounting",label:"會計",icon:"💰",roles:["admin","manager"]},
   {id:"line",label:"LINE",icon:"◉",roles:["admin","manager"]},
   {id:"analytics",label:"分析",icon:"◎",roles:["admin","manager"]},
   {id:"users",label:"使用者",icon:"👥",roles:["admin"]},
@@ -674,7 +674,7 @@ function renderSideNav(){
     </button>`).join("");
 }
 function renderBottomNav(){
-  const visibleTabs=TABS.slice(0,6).filter(t=>t.roles.includes(currentUserRole));
+  const visibleTabs=TABS.slice(0,8).filter(t=>t.roles.includes(currentUserRole));
   $("bottom-nav").innerHTML=visibleTabs.map(t=>`
     <button class="bot-btn${state.tab===t.id?" active":""}" onclick="setTab('${t.id}')">
       <span class="bot-ico">${t.icon}${t.id==="line"&&state.lineLog.length>0?'<span class="bot-dot"></span>':""}</span>
