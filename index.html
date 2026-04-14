@@ -258,17 +258,18 @@ const STAGES=[
 const STAGE_IDS=STAGES.map(s=>s.id);
 const STATUS_COLOR={"待處理":"#F59E0B","進行中":"#3B82F6","完成":"#22C55E","延誤":"#EF4444"};
 const TABS=[
-  {id:"dashboard",label:"儀表板",icon:"◈",roles:["admin","manager","operator","floor","sales"]},
+  {id:"dashboard",label:"儀表板",icon:"◈",roles:["admin","manager","operator","floor","sales","purchaser"]},
   {id:"orders",label:"工單",icon:"⊞",roles:["admin","manager","operator","floor"]},
   {id:"receipts",label:"簽收單",icon:"📋",roles:["admin","manager","operator","floor","sales"]},
   {id:"accounting",label:"會計",icon:"💰",roles:["admin","manager"]},
+  {id:"purchase",label:"採購",icon:"🛒",roles:["admin","manager","purchaser","operator","floor","sales"]},
   {id:"flow",label:"看板",icon:"⟳",roles:["admin","manager","operator","floor"]},
   {id:"quotes",label:"報價",icon:"¥",roles:["admin","manager","sales"]},
   {id:"service",label:"售服",icon:"🔧",roles:["admin","manager","operator","floor","sales"]},
   {id:"line",label:"LINE",icon:"◉",roles:["admin","manager"]},
   {id:"analytics",label:"分析",icon:"◎",roles:["admin","manager"]},
   {id:"users",label:"使用者",icon:"👥",roles:["admin"]},
-  {id:"notif",label:"通知",icon:"◆",roles:["admin","manager","operator","floor","sales"]},
+  {id:"notif",label:"通知",icon:"◆",roles:["admin","manager","operator","floor","sales","purchaser"]},
 ];
 let state={
   tab:"dashboard",
@@ -279,9 +280,12 @@ let state={
   receipts:[],
   invoices:[],
   payments:[],
+  suppliers:[],
+  purchaseOrders:[],
   lineLog:[],
   notifications:[],
   acctTab:"daily",acctDateFilter:"",
+  purchaseTab:"orders",
   unread:0,
   orderSearch:"",orderStageFilter:"all",orderPriorityFilter:"all",
   quoteFormOpen:false,
@@ -554,7 +558,7 @@ function updateUserDisplay(){
   if(currentUser){
     ava.textContent=(currentUser.email||"U").charAt(0).toUpperCase();
     name.textContent=currentUser.email.split("@")[0]||"User";
-    const roleLabel={admin:"系統管理員",manager:"主管",operator:"操作員",floor:"現場人員",sales:"業務"}[currentUserRole]||"使用者";
+    const roleLabel={admin:"系統管理員",manager:"主管",operator:"操作員",floor:"現場人員",sales:"業務",purchaser:"採購人員"}[currentUserRole]||"使用者";
     role.textContent=roleLabel;
   }
 }
@@ -630,6 +634,23 @@ async function subscribeToFirestore(){
       render();
     }, err=>console.error("訂閱收付款失敗:",err));
 
+  db.collection("suppliers")
+    .onSnapshot(snap=>{
+      state.suppliers=snap.docs.map(d=>({...d.data(),id:d.id}));
+      render();
+    }, err=>console.error("訂閱供應商失敗:",err));
+
+  db.collection("purchaseOrders")
+    .onSnapshot(snap=>{
+      state.purchaseOrders=snap.docs.map(d=>({...d.data(),id:d.id}))
+        .sort((a,b)=>{
+          const aTime=(a.createdTime?.toDate?.()?.getTime?.())||0;
+          const bTime=(b.createdTime?.toDate?.()?.getTime?.())||0;
+          return bTime-aTime;
+        });
+      render();
+    }, err=>console.error("訂閱採購單失敗:",err));
+
   if(currentUserRole==="admin"){
     await loadAllUsers();
   }
@@ -659,6 +680,7 @@ function render(){
   else if(state.tab==="service") c.innerHTML=renderService();
   else if(state.tab==="receipts") c.innerHTML=renderReceipts();
   else if(state.tab==="accounting") c.innerHTML=renderAccounting();
+  else if(state.tab==="purchase") c.innerHTML=renderPurchase();
   else if(state.tab==="line") c.innerHTML=renderLine();
   else if(state.tab==="analytics") c.innerHTML=renderAnalytics();
   else if(state.tab==="users") c.innerHTML=renderUsers();
@@ -674,7 +696,7 @@ function renderSideNav(){
     </button>`).join("");
 }
 function renderBottomNav(){
-  const visibleTabs=TABS.slice(0,8).filter(t=>t.roles.includes(currentUserRole));
+  const visibleTabs=TABS.slice(0,9).filter(t=>t.roles.includes(currentUserRole));
   $("bottom-nav").innerHTML=visibleTabs.map(t=>`
     <button class="bot-btn${state.tab===t.id?" active":""}" onclick="setTab('${t.id}')">
       <span class="bot-ico">${t.icon}${t.id==="line"&&state.lineLog.length>0?'<span class="bot-dot"></span>':""}</span>
@@ -1576,6 +1598,429 @@ async function deleteInvoice(id){
     pushNotif(`發票 ${id} 已刪除`,"warn");showToast("已刪除");closeModal();
   }catch(e){showToast("刪除失敗","error");}
 }
+// ─── 採購系統 ───────────────────────────────────────────────
+const PO_STATUS={"待審核":"#F59E0B","已核准":"#3B82F6","已下單":"#8B5CF6","部分到貨":"#06C755","已到貨":"#22C55E","已入庫":"#10B981","已取消":"#EF4444","駁回":"#EF4444"};
+function renderPurchase(){
+  const tabs=[{id:"orders",label:"📦 採購單"},{id:"suppliers",label:"🏭 供應商"},{id:"inventory",label:"📊 庫存概況"}];
+  const canManage=["admin","manager","purchaser"].includes(currentUserRole);
+  const tabBar=tabs.map(t=>`<button class="chip${state.purchaseTab===t.id?" on":""}" onclick="state.purchaseTab='${t.id}';renderContent()">${t.label}</button>`).join("");
+  let content="";
+  if(state.purchaseTab==="orders") content=renderPurchaseOrders(canManage);
+  else if(state.purchaseTab==="suppliers") content=renderSuppliers(canManage);
+  else if(state.purchaseTab==="inventory") content=renderInventory();
+  return `<div class="card"><div style="display:flex;gap:8px;flex-wrap:wrap">${tabBar}</div></div>${content}`;
+}
+function renderPurchaseOrders(canManage){
+  const list=state.purchaseOrders;
+  const stats={total:list.length,pending:list.filter(p=>p.status==="待審核").length,approved:list.filter(p=>p.status==="已核准"||p.status==="已下單").length,arrived:list.filter(p=>p.status==="已到貨"||p.status==="部分到貨").length};
+  return `
+  <div class="kpi-grid">
+    <div class="kpi-card" style="border-top:3px solid #F59E0B"><div class="kpi-label">待審核</div><div class="kpi-val" style="color:#F59E0B">${stats.pending}</div></div>
+    <div class="kpi-card" style="border-top:3px solid #3B82F6"><div class="kpi-label">進行中</div><div class="kpi-val" style="color:#3B82F6">${stats.approved}</div></div>
+    <div class="kpi-card" style="border-top:3px solid #22C55E"><div class="kpi-label">已到貨</div><div class="kpi-val" style="color:#22C55E">${stats.arrived}</div></div>
+    <div class="kpi-card" style="border-top:3px solid #8B5CF6"><div class="kpi-label">總計</div><div class="kpi-val" style="color:#8B5CF6">${stats.total}</div></div>
+  </div>
+  <div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <div class="card-title" style="margin:0">📦 採購單列表</div>
+      <button class="accent-btn" onclick="openNewPOModal()">＋ 採購申請</button>
+    </div>
+    ${list.length===0?'<div style="text-align:center;color:var(--muted);padding:20px">尚無採購單記錄</div>':""}
+    ${list.map(po=>{
+      const d=po.createdTime?.toDate?.();const ds=d?d.toLocaleDateString("zh-TW"):"—";
+      const sc=PO_STATUS[po.status]||"#64748B";
+      return `<div class="row-item slide-up">
+        <div style="flex:1;min-width:0">
+          <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+            <span class="wo-tag">${po.id}</span>
+            <span style="font-size:13px;font-weight:600">${esc(po.supplier)}</span>
+            <span class="pill" style="background:${sc}22;color:${sc};font-size:10px">${po.status}</span>
+            ${po.urgent?'<span class="pill" style="background:#7F1D1D;color:#FCA5A5;font-size:10px">急件</span>':""}
+          </div>
+          <div style="font-size:11px;color:var(--muted);margin-top:3px">${esc(po.items?.map(i=>i.name).join("、")||"—")} · 工單:${esc(po.orderId||"—")} · ${ds}</div>
+          <div style="font-size:12px;color:#F59E0B;margin-top:2px">NT$ ${Number(po.totalAmount||0).toLocaleString()}</div>
+        </div>
+        <div style="display:flex;gap:4px;flex-shrink:0;flex-wrap:wrap">
+          <button class="icon-btn" onclick="openViewPOModal('${po.id}')">👁</button>
+          ${canManage?`<button class="icon-btn" style="color:#3B82F6" onclick="openEditPOModal('${po.id}')">✏️</button>`:""}
+          ${po.status==="待審核"&&(currentUserRole==="admin"||currentUserRole==="manager")?`<button class="adv-btn" onclick="approvePO('${po.id}')">✅核准</button><button class="icon-btn" style="color:#EF4444" onclick="rejectPO('${po.id}')">✕駁回</button>`:""}
+          ${po.status==="已核准"&&canManage?`<button class="adv-btn" onclick="advancePOStatus('${po.id}','已下單')">📤下單</button>`:""}
+          ${po.status==="已下單"&&canManage?`<button class="adv-btn" onclick="openReceivePOModal('${po.id}')">📦到貨</button>`:""}
+          ${(po.status==="已到貨"||po.status==="部分到貨")&&canManage?`<button class="adv-btn" onclick="advancePOStatus('${po.id}','已入庫')">🏭入庫</button>`:""}
+        </div>
+      </div>`;
+    }).join("")}
+  </div>`;
+}
+function openNewPOModal(){
+  const supplierOpts=state.suppliers.map(s=>`<option value="${esc(s.name)}">${esc(s.name)} (${esc(s.contact||"")})</option>`).join("");
+  const orderOpts=state.orders.map(o=>`<option value="${o.id}">${o.id} — ${esc(o.customer)} (${esc(o.part)})</option>`).join("");
+  $("modal-box").innerHTML=`
+    <div class="modal-head"><div class="modal-title">🛒 採購申請</div><button class="close-btn" onclick="closeModal()">✕</button></div>
+    <div class="form-grid">
+      <div><label class="lbl">供應商*</label><div style="display:flex;gap:6px"><select class="inp" id="po-supplier" style="flex:1"><option value="">— 選擇供應商 —</option>${supplierOpts}</select><input class="inp" id="po-supplier-custom" placeholder="或手動輸入" style="flex:1"></div></div>
+      <div><label class="lbl">關聯工單</label><select class="inp" id="po-orderId"><option value="">— 無 —</option>${orderOpts}</select></div>
+    </div>
+    <div style="margin-bottom:10px">
+      <label class="lbl">採購項目*</label>
+      <div id="po-items-list"></div>
+      <button class="icon-btn" style="width:100%;text-align:center;padding:8px;margin-top:6px;border:1px dashed var(--border2);border-radius:8px" onclick="addPOItem()">＋ 新增項目</button>
+    </div>
+    <div class="form-grid">
+      <div><label class="lbl">預計到貨日</label><input class="inp" type="date" id="po-eta"></div>
+      <div><label class="lbl">付款條件</label><select class="inp" id="po-payTerms"><option>月結30天</option><option>月結60天</option><option>貨到付款</option><option>預付</option><option>其他</option></select></div>
+    </div>
+    <div class="form-grid">
+      <div style="display:flex;align-items:center;gap:8px"><input type="checkbox" id="po-urgent"><label class="lbl" style="margin:0" for="po-urgent">🚨 急件</label></div>
+    </div>
+    <div style="margin-bottom:10px"><label class="lbl">備註</label><textarea class="inp" id="po-note" rows="2" style="resize:vertical"></textarea></div>
+    ${photoInput("po-photos")}
+    <div style="display:flex;gap:10px">
+      <button class="accent-btn" style="flex:1;padding:11px" onclick="submitNewPO()">📋 提交採購申請</button>
+      <button class="icon-btn" style="flex:1;padding:11px;text-align:center" onclick="closeModal()">取消</button>
+    </div>`;
+  $("modal-wrap").classList.add("show");
+  addPOItem();
+}
+function addPOItem(){
+  const list=$("po-items-list");if(!list)return;
+  const idx=list.children.length;
+  const row=document.createElement("div");
+  row.style.cssText="display:grid;grid-template-columns:2fr 1fr 1fr 1fr auto;gap:6px;margin-bottom:6px;align-items:end";
+  row.innerHTML=`
+    <div><label class="lbl" style="font-size:10px">品名*</label><input class="inp po-item-name" placeholder="材料/零件名稱"></div>
+    <div><label class="lbl" style="font-size:10px">規格</label><input class="inp po-item-spec" placeholder="規格"></div>
+    <div><label class="lbl" style="font-size:10px">數量*</label><input class="inp po-item-qty" type="number" placeholder="0"></div>
+    <div><label class="lbl" style="font-size:10px">單價</label><input class="inp po-item-price" type="number" placeholder="0"></div>
+    <button class="icon-btn" style="color:#EF4444;padding:8px" onclick="this.parentElement.remove()">✕</button>`;
+  list.appendChild(row);
+}
+function collectPOItems(){
+  const rows=document.querySelectorAll("#po-items-list > div");
+  const items=[];
+  rows.forEach(row=>{
+    const name=row.querySelector(".po-item-name")?.value||"";
+    const spec=row.querySelector(".po-item-spec")?.value||"";
+    const qty=parseInt(row.querySelector(".po-item-qty")?.value)||0;
+    const price=parseFloat(row.querySelector(".po-item-price")?.value)||0;
+    if(name&&qty>0)items.push({name,spec,qty,price,subtotal:qty*price});
+  });
+  return items;
+}
+async function submitNewPO(){
+  const g=id=>$(id)?.value||"";
+  const supplier=g("po-supplier")||g("po-supplier-custom");
+  if(!supplier){showToast("請選擇或輸入供應商","error");return;}
+  const items=collectPOItems();
+  if(items.length===0){showToast("請至少新增一個採購項目","error");return;}
+  const totalAmount=items.reduce((s,i)=>s+i.subtotal,0);
+  const poId=`PO-${String(Date.now()).slice(-6)}`;
+  const photos=JSON.parse(g("po-photos")||"[]");
+  const data={supplier,orderId:g("po-orderId"),items,totalAmount,eta:g("po-eta"),payTerms:g("po-payTerms"),urgent:$("po-urgent")?.checked||false,note:g("po-note"),photos,status:"待審核",receivedItems:[],createdTime:firebase.firestore.Timestamp.now(),createdBy:currentUser.uid,createdByEmail:currentUser.email};
+  try{
+    await db.collection("purchaseOrders").doc(poId).set(data);
+    pushNotif(`採購申請 ${poId} 已提交（${supplier}）`,"success");showToast("採購申請已提交");closeModal();
+  }catch(e){console.error("建立採購單失敗:",e);showToast("建立失敗","error");}
+}
+function openViewPOModal(id){
+  const po=state.purchaseOrders.find(x=>x.id===id);if(!po)return;
+  const d=po.createdTime?.toDate?.();const ds=d?d.toLocaleString("zh-TW"):"—";
+  const sc=PO_STATUS[po.status]||"#64748B";
+  const itemsHtml=(po.items||[]).map((it,i)=>`<tr style="border-bottom:1px solid var(--border)">
+    <td style="padding:6px">${i+1}</td><td style="padding:6px">${esc(it.name)}</td><td style="padding:6px">${esc(it.spec||"—")}</td>
+    <td style="padding:6px">${it.qty}</td><td style="padding:6px">$${Number(it.price||0).toLocaleString()}</td><td style="padding:6px;color:#F59E0B">$${Number(it.subtotal||0).toLocaleString()}</td>
+  </tr>`).join("");
+  $("modal-box").innerHTML=`
+    <div class="modal-head"><div class="modal-title">📦 採購單 ${po.id}</div><button class="close-btn" onclick="closeModal()">✕</button></div>
+    <div style="text-align:center;margin-bottom:14px"><span class="pill" style="background:${sc}22;color:${sc};font-size:14px;padding:6px 16px">${po.status}</span>${po.urgent?'<span class="pill" style="background:#7F1D1D;color:#FCA5A5;font-size:14px;padding:6px 16px;margin-left:8px">🚨 急件</span>':""}</div>
+    ${[["採購單號",po.id],["供應商",po.supplier],["關聯工單",po.orderId||"—"],["預計到貨",po.eta||"—"],["付款條件",po.payTerms||"—"],["申請人",po.createdByEmail||"—"],["申請時間",ds],["總金額","NT$ "+Number(po.totalAmount||0).toLocaleString()]].map(([k,v])=>`<div class="detail-row"><span class="detail-key">${k}</span><span class="detail-val">${esc(String(v))}</span></div>`).join("")}
+    <div style="margin-top:12px"><div class="lbl">採購項目</div>
+      <div style="overflow-x:auto;margin-top:6px"><table style="width:100%;font-size:12px;border-collapse:collapse">
+        <tr style="color:var(--muted);border-bottom:1px solid var(--border2)"><th style="padding:6px">#</th><th style="padding:6px">品名</th><th style="padding:6px">規格</th><th style="padding:6px">數量</th><th style="padding:6px">單價</th><th style="padding:6px">小計</th></tr>
+        ${itemsHtml}
+        <tr style="font-weight:700;border-top:2px solid var(--border2)"><td colspan="5" style="padding:6px;text-align:right">合計</td><td style="padding:6px;color:#F59E0B">$${Number(po.totalAmount||0).toLocaleString()}</td></tr>
+      </table></div>
+    </div>
+    ${po.note?`<div style="margin-top:10px"><div class="lbl">備註</div><div style="background:#0F172A;border-radius:8px;padding:10px;font-size:13px;color:var(--text);margin-top:4px">${esc(po.note)}</div></div>`:""}
+    ${po.approvedBy?`<div style="margin-top:10px"><div class="lbl">審核資訊</div><div style="background:#14532D33;border-radius:8px;padding:10px;font-size:13px;color:#86EFAC;margin-top:4px">${po.status==="駁回"?"❌ 駁回":"✅ 核准"} · ${esc(po.approvedBy)} · ${po.approvedTime?.toDate?.()?.toLocaleString("zh-TW")||""}</div></div>`:""}
+    ${po.receivedItems?.length?`<div style="margin-top:10px"><div class="lbl">到貨記錄</div>${po.receivedItems.map(ri=>`<div style="background:#0F172A;border-radius:8px;padding:8px;font-size:12px;margin-top:4px;color:var(--text)">${ri.time} · ${esc(ri.note||"到貨驗收")}</div>`).join("")}</div>`:""}
+    ${renderPhotos(po.photos)}
+    <button class="icon-btn" style="width:100%;padding:10px;margin-top:14px;text-align:center" onclick="closeModal()">關閉</button>`;
+  $("modal-wrap").classList.add("show");
+}
+function openEditPOModal(id){
+  const po=state.purchaseOrders.find(x=>x.id===id);if(!po)return;
+  const supplierOpts=state.suppliers.map(s=>`<option value="${esc(s.name)}"${po.supplier===s.name?" selected":""}>${esc(s.name)}</option>`).join("");
+  const statusOpts=Object.keys(PO_STATUS).map(s=>`<option${po.status===s?" selected":""}>${s}</option>`).join("");
+  $("modal-box").innerHTML=`
+    <div class="modal-head"><div class="modal-title">✏️ 編輯採購單 ${po.id}</div><button class="close-btn" onclick="closeModal()">✕</button></div>
+    <div class="form-grid">
+      <div><label class="lbl">供應商*</label><input class="inp" id="epo-supplier" value="${esc(po.supplier)}"></div>
+      <div><label class="lbl">關聯工單</label><input class="inp" id="epo-orderId" value="${esc(po.orderId||"")}"></div>
+    </div>
+    <div class="form-grid">
+      <div><label class="lbl">狀態</label><select class="inp" id="epo-status">${statusOpts}</select></div>
+      <div><label class="lbl">預計到貨</label><input class="inp" type="date" id="epo-eta" value="${po.eta||""}"></div>
+    </div>
+    <div class="form-grid">
+      <div><label class="lbl">付款條件</label><select class="inp" id="epo-payTerms"><option${po.payTerms==="月結30天"?" selected":""}>月結30天</option><option${po.payTerms==="月結60天"?" selected":""}>月結60天</option><option${po.payTerms==="貨到付款"?" selected":""}>貨到付款</option><option${po.payTerms==="預付"?" selected":""}>預付</option><option${po.payTerms==="其他"?" selected":""}>其他</option></select></div>
+      <div><label class="lbl">總金額(NT$)</label><input class="inp" type="number" id="epo-amount" value="${po.totalAmount||0}"></div>
+    </div>
+    <div style="margin-bottom:10px"><label class="lbl">備註</label><textarea class="inp" id="epo-note" rows="2" style="resize:vertical">${esc(po.note||"")}</textarea></div>
+    ${photoInput("epo-photos")}
+    <div style="display:flex;gap:10px">
+      <button class="accent-btn" style="flex:1;padding:11px" onclick="submitEditPO('${po.id}')">💾 儲存</button>
+      <button class="icon-btn" style="flex:1;padding:11px;text-align:center" onclick="closeModal()">取消</button>
+    </div>
+    ${currentUserRole==="admin"?`<button style="background:#7F1D1D;color:#FCA5A5;border:1px solid #991B1B;border-radius:10px;padding:10px;width:100%;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;margin-top:10px" onclick="deletePO('${po.id}')">🗑️ 刪除</button>`:""}`;
+  $("modal-wrap").classList.add("show");
+  setTimeout(()=>{
+    if(po.photos&&po.photos.length){
+      const el=$("epo-photos");
+      if(el){el.value=JSON.stringify(po.photos);renderPhotoPreview("epo-photos",po.photos);}
+    }
+  },50);
+}
+async function submitEditPO(id){
+  const g=fid=>$(fid)?.value||"";
+  const supplier=g("epo-supplier");
+  if(!supplier){showToast("請填供應商","error");return;}
+  const photos=JSON.parse(g("epo-photos")||"[]");
+  const updates={supplier,orderId:g("epo-orderId"),status:g("epo-status"),eta:g("epo-eta"),payTerms:g("epo-payTerms"),totalAmount:parseFloat(g("epo-amount"))||0,note:g("epo-note"),photos};
+  try{
+    await db.collection("purchaseOrders").doc(id).set(updates,{merge:true});
+    pushNotif(`採購單 ${id} 已更新`,"success");showToast("已更新");closeModal();
+  }catch(e){showToast("更新失敗","error");}
+}
+async function approvePO(id){
+  if(!confirm("確定核准此採購申請？"))return;
+  try{
+    await db.collection("purchaseOrders").doc(id).set({status:"已核准",approvedBy:currentUser.email,approvedTime:firebase.firestore.Timestamp.now()},{merge:true});
+    pushNotif(`採購單 ${id} 已核准`,"success");showToast("已核准");
+  }catch(e){showToast("核准失敗","error");}
+}
+async function rejectPO(id){
+  const reason=prompt("請輸入駁回原因：");
+  if(reason===null)return;
+  try{
+    await db.collection("purchaseOrders").doc(id).set({status:"駁回",approvedBy:currentUser.email,approvedTime:firebase.firestore.Timestamp.now(),rejectReason:reason},{merge:true});
+    pushNotif(`採購單 ${id} 已駁回`,"warn");showToast("已駁回");
+  }catch(e){showToast("駁回失敗","error");}
+}
+async function advancePOStatus(id,newStatus){
+  if(!confirm(`確認將採購單 ${id} 狀態更新為「${newStatus}」？`))return;
+  try{
+    const updates={status:newStatus};
+    if(newStatus==="已入庫")updates.stockedTime=firebase.firestore.Timestamp.now();
+    await db.collection("purchaseOrders").doc(id).set(updates,{merge:true});
+    pushNotif(`採購單 ${id} → ${newStatus}`,"success");showToast(`已更新為「${newStatus}」`);
+  }catch(e){showToast("更新失敗","error");}
+}
+function openReceivePOModal(id){
+  const po=state.purchaseOrders.find(x=>x.id===id);if(!po)return;
+  $("modal-box").innerHTML=`
+    <div class="modal-head"><div class="modal-title">📦 到貨驗收 ${po.id}</div><button class="close-btn" onclick="closeModal()">✕</button></div>
+    <div style="margin-bottom:10px;font-size:13px;color:var(--muted)">供應商: <strong style="color:var(--text)">${esc(po.supplier)}</strong></div>
+    <div style="margin-bottom:10px"><div class="lbl">採購項目</div>
+      ${(po.items||[]).map((it,i)=>`<div class="row-item"><div style="flex:1">${esc(it.name)} (${esc(it.spec||"—")}) × ${it.qty}</div></div>`).join("")}
+    </div>
+    <div class="form-grid">
+      <div><label class="lbl">到貨狀態</label><select class="inp" id="rcv-status"><option>已到貨</option><option>部分到貨</option></select></div>
+    </div>
+    <div style="margin-bottom:10px"><label class="lbl">驗收備註</label><textarea class="inp" id="rcv-note" rows="2" style="resize:vertical"></textarea></div>
+    ${photoInput("rcv-photos")}
+    <div style="display:flex;gap:10px">
+      <button class="accent-btn" style="flex:1;padding:11px" onclick="submitReceivePO('${po.id}')">✅ 確認到貨</button>
+      <button class="icon-btn" style="flex:1;padding:11px;text-align:center" onclick="closeModal()">取消</button>
+    </div>`;
+  $("modal-wrap").classList.add("show");
+}
+async function submitReceivePO(id){
+  const g=fid=>$(fid)?.value||"";
+  const newPhotos=JSON.parse(g("rcv-photos")||"[]");
+  const po=state.purchaseOrders.find(x=>x.id===id);if(!po)return;
+  const existingPhotos=po.photos||[];
+  const received=po.receivedItems||[];
+  received.push({time:new Date().toLocaleString("zh-TW"),note:g("rcv-note"),by:currentUser.email});
+  try{
+    await db.collection("purchaseOrders").doc(id).set({status:g("rcv-status"),receivedItems:received,receivedTime:firebase.firestore.Timestamp.now(),photos:existingPhotos.concat(newPhotos)},{merge:true});
+    pushNotif(`採購單 ${id} 到貨驗收完成`,"success");showToast("到貨驗收已記錄");closeModal();
+  }catch(e){showToast("驗收失敗","error");}
+}
+async function deletePO(id){
+  if(!confirm(`確定要刪除採購單 ${id}？`))return;
+  try{
+    await db.collection("purchaseOrders").doc(id).delete();
+    pushNotif(`採購單 ${id} 已刪除`,"warn");showToast("已刪除");closeModal();
+  }catch(e){showToast("刪除失敗","error");}
+}
+// ─── 供應商管理 ─────────────────────────────────────────────
+function renderSuppliers(canManage){
+  return `
+  <div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <div class="card-title" style="margin:0">🏭 供應商列表</div>
+      ${canManage?'<button class="accent-btn" onclick="openNewSupplierModal()">＋ 新增供應商</button>':""}
+    </div>
+    ${state.suppliers.length===0?'<div style="text-align:center;color:var(--muted);padding:20px">尚無供應商資料</div>':""}
+    ${state.suppliers.map(s=>{
+      const poCount=state.purchaseOrders.filter(p=>p.supplier===s.name).length;
+      const totalSpent=state.purchaseOrders.filter(p=>p.supplier===s.name&&p.status!=="已取消"&&p.status!=="駁回").reduce((sum,p)=>sum+Number(p.totalAmount||0),0);
+      return `<div class="row-item slide-up">
+        <div style="flex:1;min-width:0">
+          <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+            <span style="font-size:14px;font-weight:700">${esc(s.name)}</span>
+            <span class="pill" style="background:#3B82F622;color:#3B82F6;font-size:10px">${s.category||"一般"}</span>
+          </div>
+          <div style="font-size:11px;color:var(--muted);margin-top:3px">聯絡人: ${esc(s.contact||"—")} · ${esc(s.phone||"")} · ${esc(s.email||"")}</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:1px">累計${poCount}筆採購 · 金額 NT$ ${totalSpent.toLocaleString()}</div>
+        </div>
+        <div style="display:flex;gap:4px;flex-shrink:0">
+          <button class="icon-btn" onclick="openViewSupplierModal('${s.id}')">👁</button>
+          ${canManage?`<button class="icon-btn" style="color:#3B82F6" onclick="openEditSupplierModal('${s.id}')">✏️</button>`:""}
+        </div>
+      </div>`;
+    }).join("")}
+  </div>`;
+}
+function openNewSupplierModal(){
+  $("modal-box").innerHTML=`
+    <div class="modal-head"><div class="modal-title">🏭 新增供應商</div><button class="close-btn" onclick="closeModal()">✕</button></div>
+    <div class="form-grid">
+      <div><label class="lbl">公司名稱*</label><input class="inp" id="sup-name"></div>
+      <div><label class="lbl">分類</label><select class="inp" id="sup-category"><option>原料</option><option>零件</option><option>設備</option><option>耗材</option><option>加工</option><option>一般</option></select></div>
+    </div>
+    <div class="form-grid">
+      <div><label class="lbl">聯絡人</label><input class="inp" id="sup-contact"></div>
+      <div><label class="lbl">電話</label><input class="inp" id="sup-phone"></div>
+    </div>
+    <div class="form-grid">
+      <div><label class="lbl">Email</label><input class="inp" type="email" id="sup-email"></div>
+      <div><label class="lbl">統一編號</label><input class="inp" id="sup-taxId"></div>
+    </div>
+    <div style="margin-bottom:10px"><label class="lbl">地址</label><input class="inp" id="sup-address"></div>
+    <div style="margin-bottom:10px"><label class="lbl">付款條件</label><select class="inp" id="sup-payTerms"><option>月結30天</option><option>月結60天</option><option>貨到付款</option><option>預付</option></select></div>
+    <div style="margin-bottom:14px"><label class="lbl">備註</label><textarea class="inp" id="sup-note" rows="2" style="resize:vertical"></textarea></div>
+    <div style="display:flex;gap:10px">
+      <button class="accent-btn" style="flex:1;padding:11px" onclick="submitNewSupplier()">🏭 建立供應商</button>
+      <button class="icon-btn" style="flex:1;padding:11px;text-align:center" onclick="closeModal()">取消</button>
+    </div>`;
+  $("modal-wrap").classList.add("show");
+}
+async function submitNewSupplier(){
+  const g=id=>$(id)?.value||"";
+  const name=g("sup-name");
+  if(!name){showToast("請填公司名稱","error");return;}
+  const supId=`SUP-${String(Date.now()).slice(-6)}`;
+  const data={name,category:g("sup-category"),contact:g("sup-contact"),phone:g("sup-phone"),email:g("sup-email"),taxId:g("sup-taxId"),address:g("sup-address"),payTerms:g("sup-payTerms"),note:g("sup-note"),createdTime:firebase.firestore.Timestamp.now(),createdBy:currentUser.uid};
+  try{
+    await db.collection("suppliers").doc(supId).set(data);
+    pushNotif(`供應商 ${name} 已建立`,"success");showToast("供應商已建立");closeModal();
+  }catch(e){showToast("建立失敗","error");}
+}
+function openViewSupplierModal(id){
+  const s=state.suppliers.find(x=>x.id===id);if(!s)return;
+  const poList=state.purchaseOrders.filter(p=>p.supplier===s.name);
+  $("modal-box").innerHTML=`
+    <div class="modal-head"><div class="modal-title">🏭 供應商 ${esc(s.name)}</div><button class="close-btn" onclick="closeModal()">✕</button></div>
+    ${[["公司名稱",s.name],["分類",s.category||"一般"],["聯絡人",s.contact||"—"],["電話",s.phone||"—"],["Email",s.email||"—"],["統一編號",s.taxId||"—"],["地址",s.address||"—"],["付款條件",s.payTerms||"—"]].map(([k,v])=>`<div class="detail-row"><span class="detail-key">${k}</span><span class="detail-val">${esc(v)}</span></div>`).join("")}
+    ${s.note?`<div style="margin-top:10px"><div class="lbl">備註</div><div style="background:#0F172A;border-radius:8px;padding:10px;font-size:13px;color:var(--text);margin-top:4px">${esc(s.note)}</div></div>`:""}
+    <div style="margin-top:14px"><div class="lbl">相關採購單 (${poList.length})</div>
+      ${poList.slice(0,5).map(po=>`<div class="row-item" style="cursor:pointer" onclick="closeModal();setTimeout(()=>openViewPOModal('${po.id}'),200)"><span class="wo-tag">${po.id}</span><span style="font-size:12px;color:${PO_STATUS[po.status]||"#64748B"}">${po.status}</span><span style="font-size:12px;color:#F59E0B;margin-left:auto">$${Number(po.totalAmount||0).toLocaleString()}</span></div>`).join("")}
+    </div>
+    <button class="icon-btn" style="width:100%;padding:10px;margin-top:14px;text-align:center" onclick="closeModal()">關閉</button>`;
+  $("modal-wrap").classList.add("show");
+}
+function openEditSupplierModal(id){
+  const s=state.suppliers.find(x=>x.id===id);if(!s)return;
+  const cats=["原料","零件","設備","耗材","加工","一般"];
+  $("modal-box").innerHTML=`
+    <div class="modal-head"><div class="modal-title">✏️ 編輯供應商</div><button class="close-btn" onclick="closeModal()">✕</button></div>
+    <div class="form-grid">
+      <div><label class="lbl">公司名稱*</label><input class="inp" id="esup-name" value="${esc(s.name)}"></div>
+      <div><label class="lbl">分類</label><select class="inp" id="esup-category">${cats.map(c=>`<option${s.category===c?" selected":""}>${c}</option>`).join("")}</select></div>
+    </div>
+    <div class="form-grid">
+      <div><label class="lbl">聯絡人</label><input class="inp" id="esup-contact" value="${esc(s.contact||"")}"></div>
+      <div><label class="lbl">電話</label><input class="inp" id="esup-phone" value="${esc(s.phone||"")}"></div>
+    </div>
+    <div class="form-grid">
+      <div><label class="lbl">Email</label><input class="inp" type="email" id="esup-email" value="${esc(s.email||"")}"></div>
+      <div><label class="lbl">統一編號</label><input class="inp" id="esup-taxId" value="${esc(s.taxId||"")}"></div>
+    </div>
+    <div style="margin-bottom:10px"><label class="lbl">地址</label><input class="inp" id="esup-address" value="${esc(s.address||"")}"></div>
+    <div style="margin-bottom:14px"><label class="lbl">備註</label><textarea class="inp" id="esup-note" rows="2" style="resize:vertical">${esc(s.note||"")}</textarea></div>
+    <div style="display:flex;gap:10px">
+      <button class="accent-btn" style="flex:1;padding:11px" onclick="submitEditSupplier('${s.id}')">💾 儲存</button>
+      <button class="icon-btn" style="flex:1;padding:11px;text-align:center" onclick="closeModal()">取消</button>
+    </div>
+    ${currentUserRole==="admin"?`<button style="background:#7F1D1D;color:#FCA5A5;border:1px solid #991B1B;border-radius:10px;padding:10px;width:100%;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;margin-top:10px" onclick="deleteSupplier('${s.id}')">🗑️ 刪除</button>`:""}`;
+  $("modal-wrap").classList.add("show");
+}
+async function submitEditSupplier(id){
+  const g=fid=>$(fid)?.value||"";
+  const name=g("esup-name");
+  if(!name){showToast("請填公司名稱","error");return;}
+  const updates={name,category:g("esup-category"),contact:g("esup-contact"),phone:g("esup-phone"),email:g("esup-email"),taxId:g("esup-taxId"),address:g("esup-address"),note:g("esup-note")};
+  try{
+    await db.collection("suppliers").doc(id).set(updates,{merge:true});
+    showToast("供應商已更新");closeModal();
+  }catch(e){showToast("更新失敗","error");}
+}
+async function deleteSupplier(id){
+  if(!confirm("確定要刪除此供應商？"))return;
+  try{
+    await db.collection("suppliers").doc(id).delete();
+    showToast("已刪除");closeModal();
+  }catch(e){showToast("刪除失敗","error");}
+}
+// ─── 庫存概況 ───────────────────────────────────────────────
+function renderInventory(){
+  const stocked=state.purchaseOrders.filter(p=>p.status==="已入庫");
+  const byItem={};
+  stocked.forEach(po=>{
+    (po.items||[]).forEach(it=>{
+      const key=it.name+(it.spec?`(${it.spec})`:"");
+      if(!byItem[key])byItem[key]={name:it.name,spec:it.spec||"",totalQty:0,totalCost:0,suppliers:new Set()};
+      byItem[key].totalQty+=it.qty;
+      byItem[key].totalCost+=it.subtotal||0;
+      byItem[key].suppliers.add(po.supplier);
+    });
+  });
+  const pending=state.purchaseOrders.filter(p=>["已核准","已下單","部分到貨","已到貨"].includes(p.status));
+  return `
+  <div class="card">
+    <div class="card-title">📊 已入庫材料統計</div>
+    ${Object.keys(byItem).length===0?'<div style="text-align:center;color:var(--muted);padding:20px">尚無入庫記錄</div>':""}
+    <div style="overflow-x:auto">${Object.keys(byItem).length>0?`<table style="width:100%;font-size:12px;border-collapse:collapse">
+      <tr style="color:var(--muted);border-bottom:1px solid var(--border2)"><th style="padding:8px 6px;text-align:left">品名</th><th style="padding:8px 6px;text-align:left">規格</th><th style="padding:8px 6px">入庫數量</th><th style="padding:8px 6px">成本合計</th><th style="padding:8px 6px;text-align:left">供應商</th></tr>
+      ${Object.values(byItem).map(it=>`<tr style="border-bottom:1px solid var(--border)">
+        <td style="padding:8px 6px;font-weight:600">${esc(it.name)}</td>
+        <td style="padding:8px 6px">${esc(it.spec||"—")}</td>
+        <td style="padding:8px 6px;text-align:center">${it.totalQty}</td>
+        <td style="padding:8px 6px;text-align:center;color:#F59E0B">$${it.totalCost.toLocaleString()}</td>
+        <td style="padding:8px 6px;font-size:11px">${Array.from(it.suppliers).map(s=>esc(s)).join("、")}</td>
+      </tr>`).join("")}
+    </table>`:""}</div>
+  </div>
+  <div class="card">
+    <div class="card-title">🚚 進行中採購 (${pending.length})</div>
+    ${pending.length===0?'<div style="text-align:center;color:var(--muted);padding:12px 0;font-size:13px">無進行中採購</div>':""}
+    ${pending.map(po=>{
+      const sc=PO_STATUS[po.status]||"#64748B";
+      return `<div class="row-item">
+        <div style="flex:1;min-width:0">
+          <span class="wo-tag">${po.id}</span>
+          <span style="font-size:13px;font-weight:600;margin-left:6px">${esc(po.supplier)}</span>
+          <span class="pill" style="background:${sc}22;color:${sc};font-size:10px;margin-left:6px">${po.status}</span>
+          <div style="font-size:11px;color:var(--muted);margin-top:3px">${esc(po.items?.map(i=>`${i.name}×${i.qty}`).join("、")||"")} · 預計${esc(po.eta||"未定")}</div>
+        </div>
+        <span style="font-size:13px;font-weight:700;color:#F59E0B;flex-shrink:0">$${Number(po.totalAmount||0).toLocaleString()}</span>
+      </div>`;
+    }).join("")}
+  </div>`;
+}
+// ─── END PURCHASING ─────────────────────────────────────────
 // ─── END ACCOUNTING ─────────────────────────────────────────
 function renderLine(){
   if(currentUserRole==="sales"||currentUserRole==="operator"||currentUserRole==="floor")return `<div class="card"><div style="padding:20px;text-align:center;color:var(--muted)">只有主管和管理員可以管理 LINE 通知。</div></div>`;
@@ -1703,6 +2148,7 @@ function renderUsers(){
               <option value="operator"${u.role==="operator"?" selected":""}>操作員</option>
               <option value="floor"${u.role==="floor"?" selected":""}>現場人員</option>
               <option value="sales"${u.role==="sales"?" selected":""}>業務</option>
+              <option value="purchaser"${u.role==="purchaser"?" selected":""}>採購人員</option>
             </select>
           </td>
           <td style="font-size:12px;color:var(--muted)">${u.created?new Date(u.created.toDate()).toLocaleDateString("zh-TW"):"-"}</td>
