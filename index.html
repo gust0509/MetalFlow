@@ -253,6 +253,7 @@ const DEFAULT_ROLES=[
   {id:"sales",label:"業務",color:"#8B5CF6"},
   {id:"purchaser",label:"採購人員",color:"#EC4899"},
   {id:"designer",label:"設計師",color:"#14B8A6"},
+  {id:"qc",label:"品保人員",color:"#6366F1"},
 ];
 let customRoles=[...DEFAULT_ROLES];
 function getRoleLabel(roleId){
@@ -292,6 +293,7 @@ const TAB_DEFS=[
   {id:"design",label:"設計",icon:"✏️",defaultRoles:["admin","manager","designer"]},
   {id:"flow",label:"看板",icon:"⟳",defaultRoles:["admin","manager","operator","floor"]},
   {id:"quotes",label:"報價",icon:"¥",defaultRoles:["admin","manager","sales"]},
+  {id:"qcmgmt",label:"品保",icon:"🔬",defaultRoles:["admin","manager","qc"]},
   {id:"service",label:"售服",icon:"🔧",defaultRoles:["admin","manager","operator","floor","sales"]},
   {id:"line",label:"LINE",icon:"◉",defaultRoles:["admin","manager"]},
   {id:"analytics",label:"分析",icon:"◎",defaultRoles:["admin","manager"]},
@@ -339,6 +341,10 @@ let state={
   purchaseTab:"orders",
   whTab:"stock",
   designTab:"projects",
+  qcTab:"iqc",
+  qcInspections:[],
+  qcDefects:[],
+  qcCapas:[],
   userMgmtTab:"users",
   unread:0,
   orderSearch:"",orderStageFilter:"all",orderPriorityFilter:"all",
@@ -772,6 +778,39 @@ async function subscribeToFirestore(){
       render();
     }, err=>console.error("訂閱採購單失敗:",err));
 
+  db.collection("qcInspections")
+    .onSnapshot(snap=>{
+      state.qcInspections=snap.docs.map(d=>({...d.data(),id:d.id}))
+        .sort((a,b)=>{
+          const aTime=(a.createdTime?.toDate?.()?.getTime?.())||0;
+          const bTime=(b.createdTime?.toDate?.()?.getTime?.())||0;
+          return bTime-aTime;
+        });
+      render();
+    }, err=>console.error("訂閱品檢失敗:",err));
+
+  db.collection("qcDefects")
+    .onSnapshot(snap=>{
+      state.qcDefects=snap.docs.map(d=>({...d.data(),id:d.id}))
+        .sort((a,b)=>{
+          const aTime=(a.createdTime?.toDate?.()?.getTime?.())||0;
+          const bTime=(b.createdTime?.toDate?.()?.getTime?.())||0;
+          return bTime-aTime;
+        });
+      render();
+    }, err=>console.error("訂閱不良品失敗:",err));
+
+  db.collection("qcCapas")
+    .onSnapshot(snap=>{
+      state.qcCapas=snap.docs.map(d=>({...d.data(),id:d.id}))
+        .sort((a,b)=>{
+          const aTime=(a.createdTime?.toDate?.()?.getTime?.())||0;
+          const bTime=(b.createdTime?.toDate?.()?.getTime?.())||0;
+          return bTime-aTime;
+        });
+      render();
+    }, err=>console.error("訂閱CAPA失敗:",err));
+
   if(currentUserRole==="admin"){
     await loadAllUsers();
   }
@@ -804,6 +843,7 @@ function render(){
   else if(state.tab==="purchase") c.innerHTML=renderPurchase();
   else if(state.tab==="warehouse") c.innerHTML=renderWarehouse();
   else if(state.tab==="design") c.innerHTML=renderDesign();
+  else if(state.tab==="qcmgmt") c.innerHTML=renderQC();
   else if(state.tab==="line") c.innerHTML=renderLine();
   else if(state.tab==="analytics") c.innerHTML=renderAnalytics();
   else if(state.tab==="users") c.innerHTML=renderUsers();
@@ -3768,6 +3808,585 @@ async function confirmOcrImport(){
   }catch(e){showToast("匯入失敗","error");}
 }
 // ─── END DESIGN ─────────────────────────────────────────────
+// ─── 品保管理系統 (QC/QA) ───────────────────────────────────
+const QC_TYPES={IQC:"進料檢驗",IPQC:"製程檢驗",OQC:"出貨檢驗",FAI:"首件檢驗"};
+const QC_RESULTS={pass:"合格",fail:"不合格",conditional:"條件放行",pending:"待判定"};
+const QC_RESULT_COLORS={pass:"#22C55E",fail:"#EF4444",conditional:"#F59E0B",pending:"#64748B"};
+const DEFECT_CATS=["尺寸不良","外觀瑕疵","焊接不良","折彎角度偏差","表面處理不良","材質不符","數量短缺","包裝破損","功能異常","其他"];
+const CAPA_STATUS={open:"開立",analyzing:"分析中",implementing:"執行中",verifying:"驗證中",closed:"已結案"};
+const CAPA_STATUS_COLORS={open:"#EF4444",analyzing:"#F59E0B",implementing:"#3B82F6",verifying:"#8B5CF6",closed:"#22C55E"};
+
+function renderQC(){
+  const tab=state.qcTab||"iqc";
+  return `
+  <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
+    <button class="chip${tab==="iqc"?" on":""}" onclick="state.qcTab='iqc';render()">📦 IQC 進料檢驗</button>
+    <button class="chip${tab==="ipqc"?" on":""}" onclick="state.qcTab='ipqc';render()">🔧 IPQC 製程檢驗</button>
+    <button class="chip${tab==="oqc"?" on":""}" onclick="state.qcTab='oqc';render()">🚚 OQC 出貨檢驗</button>
+    <button class="chip${tab==="defects"?" on":""}" onclick="state.qcTab='defects';render()">🚫 不良品管理</button>
+    <button class="chip${tab==="capa"?" on":""}" onclick="state.qcTab='capa';render()">📝 CAPA 矯正措施</button>
+    <button class="chip${tab==="report"?" on":""}" onclick="state.qcTab='report';render()">📊 品質報表</button>
+  </div>
+  ${tab==="iqc"?renderQcList("IQC"):tab==="ipqc"?renderQcList("IPQC"):tab==="oqc"?renderQcList("OQC"):tab==="defects"?renderDefects():tab==="capa"?renderCapas():renderQcReport()}`;
+}
+
+// ─── 檢驗清單（IQC/IPQC/OQC 共用）──────────────────────────
+function renderQcList(type){
+  const list=state.qcInspections.filter(q=>q.type===type);
+  const passCount=list.filter(q=>q.result==="pass").length;
+  const failCount=list.filter(q=>q.result==="fail").length;
+  return `
+  <div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <div class="card-title" style="margin:0">${QC_TYPES[type]}</div>
+      <button class="accent-btn" onclick="openNewInspectionModal('${type}')">＋ 新建檢驗單</button>
+    </div>
+    <div style="display:flex;gap:12px;margin-bottom:14px">
+      <div style="flex:1;background:#14532D22;border:1px solid #14532D;border-radius:8px;padding:10px;text-align:center">
+        <div style="font-size:20px;font-weight:800;color:#22C55E">${passCount}</div><div style="font-size:11px;color:var(--muted)">合格</div>
+      </div>
+      <div style="flex:1;background:#7F1D1D22;border:1px solid #7F1D1D;border-radius:8px;padding:10px;text-align:center">
+        <div style="font-size:20px;font-weight:800;color:#EF4444">${failCount}</div><div style="font-size:11px;color:var(--muted)">不合格</div>
+      </div>
+      <div style="flex:1;background:#17255422;border:1px solid #172554;border-radius:8px;padding:10px;text-align:center">
+        <div style="font-size:20px;font-weight:800;color:#3B82F6">${list.length}</div><div style="font-size:11px;color:var(--muted)">總件數</div>
+      </div>
+      <div style="flex:1;background:#14532D22;border:1px solid #14532D;border-radius:8px;padding:10px;text-align:center">
+        <div style="font-size:20px;font-weight:800;color:#10B981">${list.length>0?Math.round(passCount/list.length*100):0}%</div><div style="font-size:11px;color:var(--muted)">合格率</div>
+      </div>
+    </div>
+  </div>
+  ${list.length===0?`<div class="card"><div style="text-align:center;color:var(--muted);padding:20px">尚無${QC_TYPES[type]}記錄</div></div>`:""}
+  ${list.map(q=>{
+    const rColor=QC_RESULT_COLORS[q.result]||"#64748B";
+    return `<div class="card" style="border-left:3px solid ${rColor}">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <div><span class="wo-tag">${q.id}</span> <span style="font-weight:700">${esc(q.itemName||"")}</span></div>
+        <div style="display:flex;gap:6px;align-items:center">
+          <span class="pill" style="background:${rColor}22;color:${rColor};font-size:11px">${QC_RESULTS[q.result]||"待判定"}</span>
+          ${q.result==="pending"?`<button class="icon-btn" style="color:#22C55E;font-size:11px" onclick="judgeInspection('${q.id}','pass')">✓合格</button><button class="icon-btn" style="color:#EF4444;font-size:11px" onclick="judgeInspection('${q.id}','fail')">✕不合格</button>`:""}
+          <button class="icon-btn" style="color:#3B82F6;font-size:11px" onclick="viewInspection('${q.id}')">詳情</button>
+        </div>
+      </div>
+      <div style="display:flex;gap:16px;font-size:12px;color:var(--muted);flex-wrap:wrap">
+        ${type==="IQC"?`<span>供應商：${esc(q.supplier||"—")}</span><span>PO：${esc(q.poId||"—")}</span>`:""}
+        ${type==="IPQC"?`<span>工單：${esc(q.orderId||"—")}</span><span>工站：${esc(q.stage||"—")}</span>`:""}
+        ${type==="OQC"?`<span>工單：${esc(q.orderId||"—")}</span><span>客戶：${esc(q.customer||"—")}</span>`:""}
+        <span>數量：${q.qty||0} / 抽樣：${q.sampleQty||0}</span>
+        <span>不良：${q.defectQty||0}</span>
+        <span>檢驗員：${esc(q.inspector||"")}</span>
+        <span>${q.createdTime?new Date(q.createdTime.toDate()).toLocaleDateString("zh-TW"):""}</span>
+      </div>
+      ${(q.defectItems&&q.defectItems.length>0)?`<div style="margin-top:8px;display:flex;gap:4px;flex-wrap:wrap">${q.defectItems.map(d=>`<span style="background:#7F1D1D;color:#FCA5A5;padding:2px 8px;border-radius:4px;font-size:10px">${esc(d)}</span>`).join("")}</div>`:""}
+      ${q.photos&&q.photos.length>0?`<div style="display:flex;gap:4px;margin-top:8px">${q.photos.slice(0,4).map((p,pi)=>`<img src="${p}" style="width:48px;height:48px;object-fit:cover;border-radius:6px;cursor:pointer" onclick="openPhotoFull(${pi},this)">`).join("")}${q.photos.length>4?`<span style="font-size:11px;color:var(--muted);align-self:center">+${q.photos.length-4}</span>`:""}</div>`:""}
+    </div>`;
+  }).join("")}`;
+}
+
+function openNewInspectionModal(type){
+  const isIQC=type==="IQC",isIPQC=type==="IPQC",isOQC=type==="OQC";
+  const supplierOpts=state.suppliers.map(s=>`<option value="${esc(s.name)}">${esc(s.name)}</option>`).join("");
+  const orderOpts=state.orders.map(o=>`<option value="${o.id}">${o.id} — ${esc(o.customer)} — ${esc(o.part)}</option>`).join("");
+  const poOpts=state.purchaseOrders.map(p=>`<option value="${p.id}">${p.id}</option>`).join("");
+  const stageOpts=STAGES.map(s=>`<option value="${s.label}">${s.icon} ${s.label}</option>`).join("");
+  $("modal-box").innerHTML=`
+    <div class="modal-head"><div class="modal-title">🔬 新建${QC_TYPES[type]}</div><button class="close-btn" onclick="closeModal()">✕</button></div>
+    <input type="hidden" id="qc-type" value="${type}">
+    <div class="form-field"><label class="lbl">檢驗品名/品項*</label><input class="inp" id="qc-item-name" placeholder="零件名稱或材料名稱"></div>
+    ${isIQC?`
+      <div class="form-field"><label class="lbl">供應商</label><select class="inp" id="qc-supplier"><option value="">— 選擇 —</option>${supplierOpts}</select></div>
+      <div class="form-field"><label class="lbl">採購單號</label><select class="inp" id="qc-po"><option value="">— 選擇 —</option>${poOpts}</select></div>
+    `:""}
+    ${isIPQC||isOQC?`
+      <div class="form-field"><label class="lbl">關聯工單</label><select class="inp" id="qc-order"><option value="">— 選擇 —</option>${orderOpts}</select></div>
+    `:""}
+    ${isIPQC?`<div class="form-field"><label class="lbl">檢驗工站</label><select class="inp" id="qc-stage"><option value="">— 選擇 —</option>${stageOpts}</select></div>`:""}
+    ${isOQC?`<div class="form-field"><label class="lbl">客戶名稱</label><input class="inp" id="qc-customer" placeholder="客戶"></div>`:""}
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+      <div class="form-field"><label class="lbl">送檢數量*</label><input class="inp" id="qc-qty" type="number" value="0"></div>
+      <div class="form-field"><label class="lbl">抽樣數量*</label><input class="inp" id="qc-sample" type="number" value="0"></div>
+    </div>
+    <div class="form-field"><label class="lbl">檢驗項目（逐項填寫）</label>
+      <div id="qc-check-items">
+        <div style="display:flex;gap:6px;margin-bottom:4px" class="qc-check-row">
+          <input class="inp" placeholder="檢驗項目（如：外觀、尺寸L）" style="flex:2">
+          <input class="inp" placeholder="規格/標準值" style="flex:1">
+          <input class="inp" placeholder="實測值" style="flex:1">
+          <select class="inp" style="width:70px"><option value="pass">✓</option><option value="fail">✕</option></select>
+        </div>
+      </div>
+      <button class="icon-btn" style="font-size:11px;color:#3B82F6;margin-top:4px" onclick="addQcCheckRow()">＋ 新增檢驗項</button>
+    </div>
+    <div class="form-field"><label class="lbl">不良項目（可複選）</label>
+      <div style="display:flex;gap:6px;flex-wrap:wrap" id="qc-defect-cats">
+        ${DEFECT_CATS.map(d=>`<button class="chip" onclick="this.classList.toggle('on')" data-defect="${esc(d)}">${d}</button>`).join("")}
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+      <div class="form-field"><label class="lbl">不良數量</label><input class="inp" id="qc-defect-qty" type="number" value="0"></div>
+      <div class="form-field"><label class="lbl">判定結果</label>
+        <select class="inp" id="qc-result">
+          <option value="pending">待判定</option>
+          <option value="pass">合格</option>
+          <option value="fail">不合格</option>
+          <option value="conditional">條件放行</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-field"><label class="lbl">備註/不合格說明</label><textarea class="inp" id="qc-note" rows="2"></textarea></div>
+    ${photoInput("qc-photos")}
+    <button class="accent-btn" style="width:100%;padding:12px;margin-top:10px" onclick="submitInspection()">✅ 提交檢驗單</button>`;
+  $("modal-wrap").classList.add("show");
+}
+function addQcCheckRow(){
+  const list=$("qc-check-items");if(!list)return;
+  const div=document.createElement("div");
+  div.style.cssText="display:flex;gap:6px;margin-bottom:4px";
+  div.className="qc-check-row";
+  div.innerHTML=`<input class="inp" placeholder="檢驗項目" style="flex:2"><input class="inp" placeholder="規格/標準值" style="flex:1"><input class="inp" placeholder="實測值" style="flex:1"><select class="inp" style="width:70px"><option value="pass">✓</option><option value="fail">✕</option></select><button class="icon-btn" style="color:#EF4444" onclick="this.parentElement.remove()">✕</button>`;
+  list.appendChild(div);
+}
+async function submitInspection(){
+  const type=$("qc-type")?.value;
+  const itemName=$("qc-item-name")?.value?.trim();
+  if(!itemName){showToast("請輸入品名","error");return;}
+  const qty=parseInt($("qc-qty")?.value)||0;
+  const sampleQty=parseInt($("qc-sample")?.value)||0;
+  const defectQty=parseInt($("qc-defect-qty")?.value)||0;
+  const result=$("qc-result")?.value||"pending";
+  const note=$("qc-note")?.value||"";
+  // 收集檢驗項目
+  const checkItems=[];
+  document.querySelectorAll(".qc-check-row").forEach(row=>{
+    const inputs=row.querySelectorAll("input");
+    const sel=row.querySelector("select");
+    if(inputs[0]?.value?.trim()){
+      checkItems.push({item:inputs[0].value.trim(),standard:inputs[1]?.value||"",actual:inputs[2]?.value||"",result:sel?.value||"pass"});
+    }
+  });
+  // 收集不良項目
+  const defectItems=[];
+  document.querySelectorAll("#qc-defect-cats .chip.on").forEach(b=>defectItems.push(b.dataset.defect));
+  // 收集照片
+  const photosEl=$("qc-photos");
+  const photos=photosEl?.value?JSON.parse(photosEl.value):[];
+  const now=new Date();
+  const id=type+"-"+now.getFullYear().toString().slice(2)+(now.getMonth()+1).toString().padStart(2,"0")+now.getDate().toString().padStart(2,"0")+"-"+Math.random().toString(36).slice(2,6).toUpperCase();
+  const data={
+    type,itemName,qty,sampleQty,defectQty,result,note,checkItems,defectItems,photos,
+    inspector:currentUser?.email||"",
+    createdTime:firebase.firestore.FieldValue.serverTimestamp(),
+  };
+  if(type==="IQC"){data.supplier=$("qc-supplier")?.value||"";data.poId=$("qc-po")?.value||"";}
+  if(type==="IPQC"){data.orderId=$("qc-order")?.value||"";data.stage=$("qc-stage")?.value||"";}
+  if(type==="OQC"){data.orderId=$("qc-order")?.value||"";data.customer=$("qc-customer")?.value||"";}
+  try{
+    await db.collection("qcInspections").doc(id).set(data);
+    pushNotif(`${QC_TYPES[type]} ${id} 已建立 — ${QC_RESULTS[result]||"待判定"}`,result==="fail"?"warn":"success");
+    showToast("檢驗單已建立");
+    closeModal();
+    // 若不合格，自動建立不良品記錄
+    if(result==="fail"&&defectQty>0){
+      await autoCreateDefect(id,data);
+    }
+  }catch(e){showToast("建立失敗","error");}
+}
+async function judgeInspection(id,result){
+  try{
+    await db.collection("qcInspections").doc(id).set({result,judgedBy:currentUser?.email||"",judgedTime:firebase.firestore.FieldValue.serverTimestamp()},{merge:true});
+    showToast(`已判定為${QC_RESULTS[result]}`);
+    if(result==="fail"){
+      const q=state.qcInspections.find(x=>x.id===id);
+      if(q&&(q.defectQty||0)>0)await autoCreateDefect(id,q);
+    }
+  }catch(e){showToast("判定失敗","error");}
+}
+function viewInspection(id){
+  const q=state.qcInspections.find(x=>x.id===id);if(!q)return;
+  const rColor=QC_RESULT_COLORS[q.result]||"#64748B";
+  $("modal-box").innerHTML=`
+    <div class="modal-head"><div class="modal-title">🔬 檢驗單 ${q.id}</div><button class="close-btn" onclick="closeModal()">✕</button></div>
+    <div style="display:flex;gap:8px;margin-bottom:12px;align-items:center">
+      <span class="pill" style="background:${rColor}22;color:${rColor};font-size:13px;padding:4px 12px">${QC_RESULTS[q.result]||"待判定"}</span>
+      <span style="font-size:12px;color:var(--muted)">${QC_TYPES[q.type]||""}</span>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:13px;margin-bottom:14px">
+      <div><span style="color:var(--muted)">品名：</span><strong>${esc(q.itemName)}</strong></div>
+      <div><span style="color:var(--muted)">數量/抽樣：</span>${q.qty}/${q.sampleQty}</div>
+      ${q.supplier?`<div><span style="color:var(--muted)">供應商：</span>${esc(q.supplier)}</div>`:""}
+      ${q.poId?`<div><span style="color:var(--muted)">採購單：</span>${esc(q.poId)}</div>`:""}
+      ${q.orderId?`<div><span style="color:var(--muted)">工單：</span>${esc(q.orderId)}</div>`:""}
+      ${q.stage?`<div><span style="color:var(--muted)">工站：</span>${esc(q.stage)}</div>`:""}
+      ${q.customer?`<div><span style="color:var(--muted)">客戶：</span>${esc(q.customer)}</div>`:""}
+      <div><span style="color:var(--muted)">不良數：</span><span style="color:#EF4444;font-weight:700">${q.defectQty||0}</span></div>
+      <div><span style="color:var(--muted)">檢驗員：</span>${esc(q.inspector||"")}</div>
+      <div><span style="color:var(--muted)">日期：</span>${q.createdTime?new Date(q.createdTime.toDate()).toLocaleString("zh-TW"):""}</div>
+    </div>
+    ${(q.checkItems&&q.checkItems.length>0)?`
+      <div class="lbl">檢驗項目</div>
+      <div style="overflow-x:auto;margin-bottom:12px"><table style="width:100%;font-size:12px;border-collapse:collapse">
+        <tr style="color:var(--muted);border-bottom:1px solid var(--border2)"><th style="padding:6px;text-align:left">項目</th><th style="padding:6px">規格</th><th style="padding:6px">實測</th><th style="padding:6px">結果</th></tr>
+        ${q.checkItems.map(c=>`<tr style="border-bottom:1px solid var(--border)">
+          <td style="padding:6px">${esc(c.item)}</td>
+          <td style="padding:6px;text-align:center">${esc(c.standard)}</td>
+          <td style="padding:6px;text-align:center">${esc(c.actual)}</td>
+          <td style="padding:6px;text-align:center;color:${c.result==="pass"?"#22C55E":"#EF4444"};font-weight:700">${c.result==="pass"?"✓":"✕"}</td>
+        </tr>`).join("")}
+      </table></div>`:""}
+    ${(q.defectItems&&q.defectItems.length>0)?`<div class="lbl">不良項目</div><div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:12px">${q.defectItems.map(d=>`<span style="background:#7F1D1D;color:#FCA5A5;padding:2px 8px;border-radius:4px;font-size:11px">${esc(d)}</span>`).join("")}</div>`:""}
+    ${q.note?`<div class="lbl">備註</div><div style="font-size:13px;padding:8px;background:#0F172A;border-radius:6px;margin-bottom:12px">${esc(q.note)}</div>`:""}
+    ${q.photos&&q.photos.length>0?`<div class="lbl">照片</div><div style="display:flex;gap:6px;flex-wrap:wrap">${q.photos.map((p,pi)=>`<img src="${p}" style="width:80px;height:80px;object-fit:cover;border-radius:8px;cursor:pointer" onclick="openPhotoFull(${pi},this)">`).join("")}</div>`:""}
+    ${q.result==="pending"?`<div style="display:flex;gap:8px;margin-top:14px">
+      <button class="accent-btn" style="flex:1;padding:12px;background:#22C55E" onclick="judgeInspection('${q.id}','pass');closeModal()">✓ 判定合格</button>
+      <button class="accent-btn" style="flex:1;padding:12px;background:#EF4444" onclick="judgeInspection('${q.id}','fail');closeModal()">✕ 判定不合格</button>
+      <button class="accent-btn" style="flex:1;padding:12px;background:#F59E0B" onclick="judgeInspection('${q.id}','conditional');closeModal()">⚠ 條件放行</button>
+    </div>`:""}`;
+  $("modal-wrap").classList.add("show");
+}
+
+// ─── 不良品管理 ──────────────────────────────────────────────
+async function autoCreateDefect(inspId,insp){
+  const now=new Date();
+  const defId="DF-"+now.getFullYear().toString().slice(2)+(now.getMonth()+1).toString().padStart(2,"0")+now.getDate().toString().padStart(2,"0")+"-"+Math.random().toString(36).slice(2,6).toUpperCase();
+  try{
+    await db.collection("qcDefects").doc(defId).set({
+      inspectionId:inspId,
+      type:insp.type||"",
+      itemName:insp.itemName||"",
+      defectQty:insp.defectQty||0,
+      defectItems:insp.defectItems||[],
+      supplier:insp.supplier||"",
+      orderId:insp.orderId||"",
+      customer:insp.customer||"",
+      status:"open", // open, processing, closed
+      disposition:"", // 退貨/重工/特採/報廢
+      note:"",
+      photos:insp.photos||[],
+      createdBy:currentUser?.email||"",
+      createdTime:firebase.firestore.FieldValue.serverTimestamp(),
+    });
+    pushNotif(`不良品 ${defId} 已自動建立 (${insp.itemName})`,"warn");
+  }catch(e){console.error("自動建立不良品失敗:",e);}
+}
+function renderDefects(){
+  const list=state.qcDefects;
+  const openCount=list.filter(d=>d.status==="open").length;
+  return `
+  <div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <div class="card-title" style="margin:0">🚫 不良品管理</div>
+      <button class="accent-btn" onclick="openNewDefectModal()">＋ 手動登記</button>
+    </div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:14px">檢驗不合格時系統自動建立。處置方式：退貨、重工、特採、報廢。待處理：<strong style="color:#EF4444">${openCount}</strong> 件</div>
+  </div>
+  ${list.length===0?`<div class="card"><div style="text-align:center;color:var(--muted);padding:20px">尚無不良品記錄</div></div>`:""}
+  ${list.map(d=>{
+    const stColor=d.status==="closed"?"#22C55E":d.status==="processing"?"#F59E0B":"#EF4444";
+    const stLabel=d.status==="closed"?"已結案":d.status==="processing"?"處理中":"待處理";
+    return `<div class="card" style="border-left:3px solid ${stColor}">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+        <div><span class="wo-tag">${d.id}</span> <span style="font-weight:700">${esc(d.itemName)}</span></div>
+        <div style="display:flex;gap:6px;align-items:center">
+          <span class="pill" style="background:${stColor}22;color:${stColor};font-size:11px">${stLabel}</span>
+          ${d.disposition?`<span style="font-size:11px;color:var(--muted)">${esc(d.disposition)}</span>`:""}
+          ${d.status!=="closed"?`<button class="icon-btn" style="color:#3B82F6;font-size:11px" onclick="openDisposeDefectModal('${d.id}')">處置</button>`:""}
+          ${d.status!=="closed"?`<button class="icon-btn" style="color:#8B5CF6;font-size:11px" onclick="openNewCapaModal('${d.id}')">開CAPA</button>`:""}
+        </div>
+      </div>
+      <div style="display:flex;gap:14px;font-size:12px;color:var(--muted);flex-wrap:wrap">
+        <span>不良數：<strong style="color:#EF4444">${d.defectQty||0}</strong></span>
+        <span>來源：${QC_TYPES[d.type]||"—"}</span>
+        <span>檢驗單：${esc(d.inspectionId||"—")}</span>
+        ${d.supplier?`<span>供應商：${esc(d.supplier)}</span>`:""}
+        ${d.orderId?`<span>工單：${esc(d.orderId)}</span>`:""}
+        <span>${d.createdTime?new Date(d.createdTime.toDate()).toLocaleDateString("zh-TW"):""}</span>
+      </div>
+      ${(d.defectItems&&d.defectItems.length)?`<div style="margin-top:6px;display:flex;gap:4px;flex-wrap:wrap">${d.defectItems.map(x=>`<span style="background:#7F1D1D;color:#FCA5A5;padding:2px 8px;border-radius:4px;font-size:10px">${esc(x)}</span>`).join("")}</div>`:""}
+    </div>`;
+  }).join("")}`;
+}
+function openNewDefectModal(){
+  $("modal-box").innerHTML=`
+    <div class="modal-head"><div class="modal-title">🚫 登記不良品</div><button class="close-btn" onclick="closeModal()">✕</button></div>
+    <div class="form-field"><label class="lbl">品名*</label><input class="inp" id="df-item"></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+      <div class="form-field"><label class="lbl">不良數量*</label><input class="inp" id="df-qty" type="number" value="1"></div>
+      <div class="form-field"><label class="lbl">來源類型</label><select class="inp" id="df-type"><option value="IQC">進料</option><option value="IPQC">製程</option><option value="OQC">出貨</option></select></div>
+    </div>
+    <div class="form-field"><label class="lbl">不良分類</label>
+      <div style="display:flex;gap:6px;flex-wrap:wrap" id="df-cats">${DEFECT_CATS.map(d=>`<button class="chip" onclick="this.classList.toggle('on')" data-defect="${esc(d)}">${d}</button>`).join("")}</div>
+    </div>
+    <div class="form-field"><label class="lbl">備註</label><textarea class="inp" id="df-note" rows="2"></textarea></div>
+    ${photoInput("df-photos")}
+    <button class="accent-btn" style="width:100%;padding:12px;margin-top:10px" onclick="submitNewDefect()">✅ 登記</button>`;
+  $("modal-wrap").classList.add("show");
+}
+async function submitNewDefect(){
+  const itemName=$("df-item")?.value?.trim();if(!itemName){showToast("請輸入品名","error");return;}
+  const defectItems=[];document.querySelectorAll("#df-cats .chip.on").forEach(b=>defectItems.push(b.dataset.defect));
+  const photosEl=$("df-photos");const photos=photosEl?.value?JSON.parse(photosEl.value):[];
+  const now=new Date();
+  const id="DF-"+now.getFullYear().toString().slice(2)+(now.getMonth()+1).toString().padStart(2,"0")+now.getDate().toString().padStart(2,"0")+"-"+Math.random().toString(36).slice(2,6).toUpperCase();
+  try{
+    await db.collection("qcDefects").doc(id).set({
+      itemName,defectQty:parseInt($("df-qty")?.value)||1,type:$("df-type")?.value||"",defectItems,photos,
+      status:"open",disposition:"",note:$("df-note")?.value||"",inspectionId:"",supplier:"",orderId:"",customer:"",
+      createdBy:currentUser?.email||"",createdTime:firebase.firestore.FieldValue.serverTimestamp()
+    });
+    showToast("不良品已登記");closeModal();
+  }catch(e){showToast("登記失敗","error");}
+}
+function openDisposeDefectModal(id){
+  const d=state.qcDefects.find(x=>x.id===id);if(!d)return;
+  $("modal-box").innerHTML=`
+    <div class="modal-head"><div class="modal-title">🔧 處置不良品 — ${d.id}</div><button class="close-btn" onclick="closeModal()">✕</button></div>
+    <div style="font-size:13px;margin-bottom:12px"><strong>${esc(d.itemName)}</strong> · 不良數：${d.defectQty}</div>
+    <div class="form-field"><label class="lbl">處置方式*</label>
+      <select class="inp" id="dispose-action">
+        <option value="">— 選擇 —</option><option value="退貨">退貨</option><option value="重工">重工</option><option value="特採">特採（條件接受）</option><option value="報廢">報廢</option>
+      </select>
+    </div>
+    <div class="form-field"><label class="lbl">處置說明</label><textarea class="inp" id="dispose-note" rows="2">${esc(d.note||"")}</textarea></div>
+    <div style="display:flex;gap:8px;margin-top:10px">
+      <button class="accent-btn" style="flex:1;padding:12px" onclick="submitDispose('${id}','processing')">📋 標記處理中</button>
+      <button class="accent-btn" style="flex:1;padding:12px;background:#22C55E" onclick="submitDispose('${id}','closed')">✅ 直接結案</button>
+    </div>`;
+  $("modal-wrap").classList.add("show");
+}
+async function submitDispose(id,status){
+  const disposition=$("dispose-action")?.value;
+  if(!disposition){showToast("請選擇處置方式","error");return;}
+  try{
+    await db.collection("qcDefects").doc(id).set({disposition,status,note:$("dispose-note")?.value||"",disposedBy:currentUser?.email||"",disposedTime:firebase.firestore.FieldValue.serverTimestamp()},{merge:true});
+    showToast("已更新處置");closeModal();
+  }catch(e){showToast("更新失敗","error");}
+}
+
+// ─── CAPA 矯正預防措施 ──────────────────────────────────────
+function renderCapas(){
+  const list=state.qcCapas;
+  return `
+  <div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <div class="card-title" style="margin:0">📝 CAPA 矯正預防措施</div>
+      <button class="accent-btn" onclick="openNewCapaModal()">＋ 新建 CAPA</button>
+    </div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:14px">Corrective And Preventive Action — 矯正與預防措施追蹤系統。支援 8D 報告流程。</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+      ${Object.entries(CAPA_STATUS).map(([k,v])=>{
+        const cnt=list.filter(c=>c.status===k).length;
+        return `<div style="background:${CAPA_STATUS_COLORS[k]}15;border:1px solid ${CAPA_STATUS_COLORS[k]}44;border-radius:8px;padding:6px 14px;font-size:12px"><span style="color:${CAPA_STATUS_COLORS[k]};font-weight:700">${cnt}</span> ${v}</div>`;
+      }).join("")}
+    </div>
+  </div>
+  ${list.length===0?`<div class="card"><div style="text-align:center;color:var(--muted);padding:20px">尚無 CAPA 記錄</div></div>`:""}
+  ${list.map(c=>{
+    const stColor=CAPA_STATUS_COLORS[c.status]||"#64748B";
+    return `<div class="card" style="border-left:3px solid ${stColor}">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+        <div><span class="wo-tag">${c.id}</span> <span style="font-weight:700">${esc(c.title||"")}</span></div>
+        <div style="display:flex;gap:6px;align-items:center">
+          <span class="pill" style="background:${stColor}22;color:${stColor};font-size:11px">${CAPA_STATUS[c.status]||""}</span>
+          <button class="icon-btn" style="color:#3B82F6;font-size:11px" onclick="openCapaDetail('${c.id}')">詳情/編輯</button>
+        </div>
+      </div>
+      <div style="display:flex;gap:14px;font-size:12px;color:var(--muted);flex-wrap:wrap">
+        ${c.defectId?`<span>不良品：${esc(c.defectId)}</span>`:""}
+        <span>負責人：${esc(c.owner||"")}</span>
+        <span>預計完成：${c.dueDate||"—"}</span>
+        <span>${c.createdTime?new Date(c.createdTime.toDate()).toLocaleDateString("zh-TW"):""}</span>
+      </div>
+      ${c.rootCause?`<div style="font-size:12px;margin-top:6px"><span style="color:var(--muted)">根因：</span>${esc(c.rootCause)}</div>`:""}
+    </div>`;
+  }).join("")}`;
+}
+function openNewCapaModal(defectId){
+  const d=defectId?state.qcDefects.find(x=>x.id===defectId):null;
+  $("modal-box").innerHTML=`
+    <div class="modal-head"><div class="modal-title">📝 新建 CAPA</div><button class="close-btn" onclick="closeModal()">✕</button></div>
+    <div class="form-field"><label class="lbl">標題/問題描述*</label><input class="inp" id="capa-title" value="${d?esc(d.itemName+" — 不良品處理"):""}"></div>
+    ${d?`<input type="hidden" id="capa-defect" value="${d.id}">`:`<div class="form-field"><label class="lbl">關聯不良品單號</label><input class="inp" id="capa-defect" placeholder="選填"></div>`}
+    <div class="form-field"><label class="lbl">負責人*</label><input class="inp" id="capa-owner" value="${currentUser?.email||""}"></div>
+    <div class="form-field"><label class="lbl">預計完成日</label><input class="inp" id="capa-due" type="date"></div>
+    <div class="form-field"><label class="lbl">問題描述 (D2)</label><textarea class="inp" id="capa-desc" rows="2">${d?esc(`品名：${d.itemName}，不良數：${d.defectQty}，不良項：${(d.defectItems||[]).join("、")}`):""}  </textarea></div>
+    <div class="form-field"><label class="lbl">根本原因分析 (D4)</label><textarea class="inp" id="capa-root" rows="2"></textarea></div>
+    <div class="form-field"><label class="lbl">矯正措施 (D5)</label><textarea class="inp" id="capa-corrective" rows="2"></textarea></div>
+    <div class="form-field"><label class="lbl">預防措施 (D7)</label><textarea class="inp" id="capa-preventive" rows="2"></textarea></div>
+    <button class="accent-btn" style="width:100%;padding:12px;margin-top:10px" onclick="submitCapa()">✅ 建立 CAPA</button>`;
+  $("modal-wrap").classList.add("show");
+}
+async function submitCapa(){
+  const title=$("capa-title")?.value?.trim();if(!title){showToast("請輸入標題","error");return;}
+  const owner=$("capa-owner")?.value?.trim();if(!owner){showToast("請輸入負責人","error");return;}
+  const now=new Date();
+  const id="CAPA-"+now.getFullYear().toString().slice(2)+(now.getMonth()+1).toString().padStart(2,"0")+"-"+Math.random().toString(36).slice(2,6).toUpperCase();
+  try{
+    await db.collection("qcCapas").doc(id).set({
+      title,owner,
+      defectId:$("capa-defect")?.value||"",
+      dueDate:$("capa-due")?.value||"",
+      description:$("capa-desc")?.value||"",
+      rootCause:$("capa-root")?.value||"",
+      correctiveAction:$("capa-corrective")?.value||"",
+      preventiveAction:$("capa-preventive")?.value||"",
+      status:"open",
+      createdBy:currentUser?.email||"",
+      createdTime:firebase.firestore.FieldValue.serverTimestamp()
+    });
+    showToast("CAPA 已建立");closeModal();
+  }catch(e){showToast("建立失敗","error");}
+}
+function openCapaDetail(id){
+  const c=state.qcCapas.find(x=>x.id===id);if(!c)return;
+  const stColor=CAPA_STATUS_COLORS[c.status]||"#64748B";
+  $("modal-box").innerHTML=`
+    <div class="modal-head"><div class="modal-title">📝 ${c.id}</div><button class="close-btn" onclick="closeModal()">✕</button></div>
+    <div style="display:flex;gap:8px;margin-bottom:14px;align-items:center">
+      <span class="pill" style="background:${stColor}22;color:${stColor};font-size:13px;padding:4px 12px">${CAPA_STATUS[c.status]||""}</span>
+      <span style="flex:1;font-weight:700">${esc(c.title)}</span>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:13px;margin-bottom:14px">
+      <div><span style="color:var(--muted)">負責人：</span>${esc(c.owner)}</div>
+      <div><span style="color:var(--muted)">預計完成：</span>${c.dueDate||"—"}</div>
+      ${c.defectId?`<div><span style="color:var(--muted)">不良品：</span>${esc(c.defectId)}</div>`:""}
+      <div><span style="color:var(--muted)">建立日：</span>${c.createdTime?new Date(c.createdTime.toDate()).toLocaleDateString("zh-TW"):""}</div>
+    </div>
+    <div style="font-size:13px;line-height:1.8">
+      ${c.description?`<div style="margin-bottom:10px"><div class="lbl">D2 問題描述</div><div style="padding:8px;background:#0F172A;border-radius:6px">${esc(c.description)}</div></div>`:""}
+      <div style="margin-bottom:10px"><div class="lbl">D4 根本原因</div><textarea class="inp" id="capa-e-root" rows="2">${esc(c.rootCause||"")}</textarea></div>
+      <div style="margin-bottom:10px"><div class="lbl">D5 矯正措施</div><textarea class="inp" id="capa-e-corrective" rows="2">${esc(c.correctiveAction||"")}</textarea></div>
+      <div style="margin-bottom:10px"><div class="lbl">D7 預防措施</div><textarea class="inp" id="capa-e-preventive" rows="2">${esc(c.preventiveAction||"")}</textarea></div>
+      <div style="margin-bottom:10px"><div class="lbl">D8 驗證結果</div><textarea class="inp" id="capa-e-verify" rows="2">${esc(c.verification||"")}</textarea></div>
+    </div>
+    <div class="form-field"><label class="lbl">更新狀態</label>
+      <select class="inp" id="capa-e-status">
+        ${Object.entries(CAPA_STATUS).map(([k,v])=>`<option value="${k}"${c.status===k?" selected":""}>${v}</option>`).join("")}
+      </select>
+    </div>
+    <button class="accent-btn" style="width:100%;padding:12px;margin-top:10px" onclick="updateCapa('${c.id}')">💾 儲存變更</button>`;
+  $("modal-wrap").classList.add("show");
+}
+async function updateCapa(id){
+  try{
+    await db.collection("qcCapas").doc(id).set({
+      rootCause:$("capa-e-root")?.value||"",
+      correctiveAction:$("capa-e-corrective")?.value||"",
+      preventiveAction:$("capa-e-preventive")?.value||"",
+      verification:$("capa-e-verify")?.value||"",
+      status:$("capa-e-status")?.value||"open",
+      updatedBy:currentUser?.email||"",
+      updatedTime:firebase.firestore.FieldValue.serverTimestamp()
+    },{merge:true});
+    showToast("CAPA 已更新");closeModal();
+  }catch(e){showToast("更新失敗","error");}
+}
+
+// ─── 品質報表 / SPC ──────────────────────────────────────────
+function renderQcReport(){
+  const insp=state.qcInspections;
+  const defects=state.qcDefects;
+  const capas=state.qcCapas;
+  // 統計
+  const total=insp.length;
+  const passCount=insp.filter(q=>q.result==="pass").length;
+  const failCount=insp.filter(q=>q.result==="fail").length;
+  const passRate=total>0?Math.round(passCount/total*100):0;
+  // 各類統計
+  const iqcList=insp.filter(q=>q.type==="IQC"),ipqcList=insp.filter(q=>q.type==="IPQC"),oqcList=insp.filter(q=>q.type==="OQC");
+  const iqcPass=iqcList.filter(q=>q.result==="pass").length;
+  const ipqcPass=ipqcList.filter(q=>q.result==="pass").length;
+  const oqcPass=oqcList.filter(q=>q.result==="pass").length;
+  // 不良分類統計
+  const defectCatCount={};
+  insp.forEach(q=>{(q.defectItems||[]).forEach(d=>{defectCatCount[d]=(defectCatCount[d]||0)+1;});});
+  defects.forEach(d=>{(d.defectItems||[]).forEach(x=>{defectCatCount[x]=(defectCatCount[x]||0)+1;});});
+  const topDefects=Object.entries(defectCatCount).sort((a,b)=>b[1]-a[1]).slice(0,8);
+  const maxDefect=topDefects[0]?topDefects[0][1]:1;
+  // CAPA 統計
+  const capaOpen=capas.filter(c=>c.status!=="closed").length;
+  const capaClosed=capas.filter(c=>c.status==="closed").length;
+  // 月度趨勢
+  const monthData={};
+  insp.forEach(q=>{
+    if(!q.createdTime)return;
+    const d=q.createdTime.toDate();
+    const key=d.getFullYear()+"-"+(d.getMonth()+1).toString().padStart(2,"0");
+    if(!monthData[key])monthData[key]={total:0,pass:0,fail:0};
+    monthData[key].total++;
+    if(q.result==="pass")monthData[key].pass++;
+    if(q.result==="fail")monthData[key].fail++;
+  });
+  const months=Object.keys(monthData).sort().slice(-6);
+
+  return `
+  <div class="card">
+    <div class="card-title">📊 品質總覽</div>
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px">
+      <div style="background:#17255422;border:1px solid #172554;border-radius:10px;padding:14px;text-align:center">
+        <div style="font-size:26px;font-weight:800;color:#3B82F6">${total}</div><div style="font-size:11px;color:var(--muted)">總檢驗數</div>
+      </div>
+      <div style="background:#14532D22;border:1px solid #14532D;border-radius:10px;padding:14px;text-align:center">
+        <div style="font-size:26px;font-weight:800;color:#22C55E">${passRate}%</div><div style="font-size:11px;color:var(--muted)">總合格率</div>
+      </div>
+      <div style="background:#7F1D1D22;border:1px solid #7F1D1D;border-radius:10px;padding:14px;text-align:center">
+        <div style="font-size:26px;font-weight:800;color:#EF4444">${defects.filter(d=>d.status==="open").length}</div><div style="font-size:11px;color:var(--muted)">待處理不良</div>
+      </div>
+      <div style="background:#451A0322;border:1px solid #451A03;border-radius:10px;padding:14px;text-align:center">
+        <div style="font-size:26px;font-weight:800;color:#F59E0B">${capaOpen}</div><div style="font-size:11px;color:var(--muted)">進行中CAPA</div>
+      </div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-title">📈 各類檢驗合格率</div>
+    <div style="display:flex;flex-direction:column;gap:10px">
+      ${[{label:"IQC 進料",list:iqcList,pass:iqcPass,color:"#3B82F6"},{label:"IPQC 製程",list:ipqcList,pass:ipqcPass,color:"#8B5CF6"},{label:"OQC 出貨",list:oqcList,pass:oqcPass,color:"#22C55E"}].map(t=>{
+        const rate=t.list.length>0?Math.round(t.pass/t.list.length*100):0;
+        return `<div>
+          <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px"><span>${t.label}</span><span style="font-weight:700;color:${rate>=80?'#22C55E':rate>=60?'#F59E0B':'#EF4444'}">${rate}% (${t.pass}/${t.list.length})</span></div>
+          <div class="bar-bg" style="height:10px"><div class="bar-fill" style="height:10px;width:${rate}%;background:${t.color}"></div></div>
+        </div>`;
+      }).join("")}
+    </div>
+  </div>
+  ${topDefects.length>0?`
+  <div class="card">
+    <div class="card-title">🚫 不良分類排行（柏拉圖）</div>
+    ${topDefects.map(([cat,cnt])=>{
+      const pct=Math.round(cnt/maxDefect*100);
+      return `<div style="margin-bottom:8px">
+        <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px"><span>${esc(cat)}</span><span style="font-weight:700;color:#EF4444">${cnt} 次</span></div>
+        <div class="bar-bg" style="height:8px"><div class="bar-fill" style="height:8px;width:${pct}%;background:#EF4444"></div></div>
+      </div>`;
+    }).join("")}
+  </div>`:""}
+  ${months.length>0?`
+  <div class="card">
+    <div class="card-title">📅 月度趨勢</div>
+    <div style="overflow-x:auto"><table style="width:100%;font-size:12px;border-collapse:collapse">
+      <tr style="color:var(--muted);border-bottom:1px solid var(--border2)"><th style="padding:6px">月份</th><th style="padding:6px">總件數</th><th style="padding:6px">合格</th><th style="padding:6px">不合格</th><th style="padding:6px">合格率</th></tr>
+      ${months.map(m=>{
+        const md=monthData[m];
+        const rate=md.total>0?Math.round(md.pass/md.total*100):0;
+        return `<tr style="border-bottom:1px solid var(--border)">
+          <td style="padding:6px;font-weight:600">${m}</td>
+          <td style="padding:6px;text-align:center">${md.total}</td>
+          <td style="padding:6px;text-align:center;color:#22C55E">${md.pass}</td>
+          <td style="padding:6px;text-align:center;color:#EF4444">${md.fail}</td>
+          <td style="padding:6px;text-align:center;font-weight:700;color:${rate>=80?"#22C55E":rate>=60?"#F59E0B":"#EF4444"}">${rate}%</td>
+        </tr>`;
+      }).join("")}
+    </table></div>
+  </div>`:""}
+  <div class="card">
+    <div class="card-title">📋 CAPA 結案統計</div>
+    <div style="display:flex;gap:14px;font-size:13px">
+      <div><span style="color:var(--muted)">已結案：</span><strong style="color:#22C55E">${capaClosed}</strong></div>
+      <div><span style="color:var(--muted)">進行中：</span><strong style="color:#F59E0B">${capaOpen}</strong></div>
+      <div><span style="color:var(--muted)">結案率：</span><strong style="color:${capas.length>0&&capaClosed/capas.length>=0.7?"#22C55E":"#F59E0B"}">${capas.length>0?Math.round(capaClosed/capas.length*100):0}%</strong></div>
+    </div>
+  </div>`;
+}
+// ─── END QC ─────────────────────────────────────────────────
 // ─── END ACCOUNTING ─────────────────────────────────────────
 function renderLine(){
   if(currentUserRole==="sales"||currentUserRole==="operator"||currentUserRole==="floor")return `<div class="card"><div style="padding:20px;text-align:center;color:var(--muted)">只有主管和管理員可以管理 LINE 通知。</div></div>`;
