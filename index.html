@@ -244,6 +244,27 @@ const db=firebase.firestore();
 let currentUser=null, currentUserRole="operator";
 let unsubscribeOrders=null, unsubscribeQuotes=null;
 
+// ─── 角色管理系統 ────────────────────────────────────────────
+const DEFAULT_ROLES=[
+  {id:"admin",label:"系統管理員",color:"#EF4444",isSystem:true},
+  {id:"manager",label:"主管",color:"#F59E0B",isSystem:true},
+  {id:"operator",label:"操作員",color:"#3B82F6"},
+  {id:"floor",label:"現場人員",color:"#10B981"},
+  {id:"sales",label:"業務",color:"#8B5CF6"},
+  {id:"purchaser",label:"採購人員",color:"#EC4899"},
+  {id:"designer",label:"設計師",color:"#14B8A6"},
+];
+let customRoles=[...DEFAULT_ROLES];
+function getRoleLabel(roleId){
+  return customRoles.find(r=>r.id===roleId)?.label||roleId;
+}
+function getRoleColor(roleId){
+  return customRoles.find(r=>r.id===roleId)?.color||"#64748B";
+}
+function getAllRoleIds(){
+  return customRoles.map(r=>r.id);
+}
+
 // ─── DATA ────────────────────────────────────────────────────
 const STAGES=[
   {id:"inquiry",label:"詢價",icon:"📋",color:"#64748B"},
@@ -260,22 +281,44 @@ const STAGES=[
 ];
 const STAGE_IDS=STAGES.map(s=>s.id);
 const STATUS_COLOR={"待處理":"#F59E0B","進行中":"#3B82F6","完成":"#22C55E","延誤":"#EF4444"};
-const TABS=[
-  {id:"dashboard",label:"儀表板",icon:"◈",roles:["admin","manager","operator","floor","sales","purchaser","designer"]},
-  {id:"orders",label:"工單",icon:"⊞",roles:["admin","manager","operator","floor"]},
-  {id:"receipts",label:"簽收單",icon:"📋",roles:["admin","manager","operator","floor","sales"]},
-  {id:"accounting",label:"會計",icon:"💰",roles:["admin","manager"]},
-  {id:"purchase",label:"採購",icon:"🛒",roles:["admin","manager","purchaser","operator","floor","sales"]},
-  {id:"warehouse",label:"倉管",icon:"🏭",roles:["admin","manager","purchaser"]},
-  {id:"design",label:"設計",icon:"✏️",roles:["admin","manager","designer"]},
-  {id:"flow",label:"看板",icon:"⟳",roles:["admin","manager","operator","floor"]},
-  {id:"quotes",label:"報價",icon:"¥",roles:["admin","manager","sales"]},
-  {id:"service",label:"售服",icon:"🔧",roles:["admin","manager","operator","floor","sales"]},
-  {id:"line",label:"LINE",icon:"◉",roles:["admin","manager"]},
-  {id:"analytics",label:"分析",icon:"◎",roles:["admin","manager"]},
-  {id:"users",label:"使用者",icon:"👥",roles:["admin"]},
-  {id:"notif",label:"通知",icon:"◆",roles:["admin","manager","operator","floor","sales","purchaser","designer"]},
+// TABS 的 roles 會在載入自訂角色後動態更新
+const TAB_DEFS=[
+  {id:"dashboard",label:"儀表板",icon:"◈",defaultRoles:"all"},
+  {id:"orders",label:"工單",icon:"⊞",defaultRoles:["admin","manager","operator","floor"]},
+  {id:"receipts",label:"簽收單",icon:"📋",defaultRoles:["admin","manager","operator","floor","sales"]},
+  {id:"accounting",label:"會計",icon:"💰",defaultRoles:["admin","manager"]},
+  {id:"purchase",label:"採購",icon:"🛒",defaultRoles:["admin","manager","purchaser","operator","floor","sales"]},
+  {id:"warehouse",label:"倉管",icon:"🏭",defaultRoles:["admin","manager","purchaser"]},
+  {id:"design",label:"設計",icon:"✏️",defaultRoles:["admin","manager","designer"]},
+  {id:"flow",label:"看板",icon:"⟳",defaultRoles:["admin","manager","operator","floor"]},
+  {id:"quotes",label:"報價",icon:"¥",defaultRoles:["admin","manager","sales"]},
+  {id:"service",label:"售服",icon:"🔧",defaultRoles:["admin","manager","operator","floor","sales"]},
+  {id:"line",label:"LINE",icon:"◉",defaultRoles:["admin","manager"]},
+  {id:"analytics",label:"分析",icon:"◎",defaultRoles:["admin","manager"]},
+  {id:"users",label:"使用者",icon:"👥",defaultRoles:["admin"]},
+  {id:"notif",label:"通知",icon:"◆",defaultRoles:"all"},
 ];
+// 動態 TABS（會被 applyCustomRoles 更新）
+let TABS=TAB_DEFS.map(t=>({...t,roles:t.defaultRoles==="all"?getAllRoleIds():[...t.defaultRoles]}));
+let tabPermissions={}; // {tabId:[roleId,...]} 從Firestore載入的自訂權限
+
+function applyCustomRoles(){
+  // 根據 customRoles 和 tabPermissions 重建 TABS
+  TABS=TAB_DEFS.map(t=>{
+    // 若有自訂權限設定，使用自訂；否則用預設（但要確保包含所有自訂角色中符合的）
+    let roles;
+    if(tabPermissions[t.id]){
+      roles=[...tabPermissions[t.id]];
+    }else if(t.defaultRoles==="all"){
+      roles=getAllRoleIds();
+    }else{
+      roles=[...t.defaultRoles];
+    }
+    // admin 永遠有所有權限
+    if(!roles.includes("admin"))roles.unshift("admin");
+    return {...t,roles};
+  });
+}
 let state={
   tab:"dashboard",
   orders:[],
@@ -296,6 +339,7 @@ let state={
   purchaseTab:"orders",
   whTab:"stock",
   designTab:"projects",
+  userMgmtTab:"users",
   unread:0,
   orderSearch:"",orderStageFilter:"all",orderPriorityFilter:"all",
   quoteFormOpen:false,
@@ -547,6 +591,8 @@ function onAuthStateChanged(){
 }
 async function loadUserRole(){
   try{
+    // 載入自訂角色設定
+    await loadCustomRoles();
     const snap=await db.collection("users").doc(currentUser.uid).get();
     if(snap.exists){
       currentUserRole=snap.data().role||"operator";
@@ -563,13 +609,50 @@ async function loadUserRole(){
     currentUserRole="operator";
   }
 }
+async function loadCustomRoles(){
+  try{
+    const snap=await db.collection("settings").doc("roles").get();
+    if(snap.exists){
+      const data=snap.data();
+      if(data.roles&&Array.isArray(data.roles)&&data.roles.length>0){
+        // 確保 admin 和 manager 永遠存在
+        const hasAdmin=data.roles.some(r=>r.id==="admin");
+        const hasManager=data.roles.some(r=>r.id==="manager");
+        customRoles=data.roles;
+        if(!hasAdmin)customRoles.unshift({id:"admin",label:"系統管理員",color:"#EF4444",isSystem:true});
+        if(!hasManager)customRoles.splice(1,0,{id:"manager",label:"主管",color:"#F59E0B",isSystem:true});
+      }
+      if(data.tabPermissions){
+        tabPermissions=data.tabPermissions;
+      }
+    }
+    applyCustomRoles();
+  }catch(e){
+    console.error("載入自訂角色失敗:",e);
+    applyCustomRoles();
+  }
+}
+async function saveCustomRoles(){
+  try{
+    await db.collection("settings").doc("roles").set({
+      roles:customRoles,
+      tabPermissions,
+      updatedAt:firebase.firestore.FieldValue.serverTimestamp(),
+      updatedBy:currentUser?.email||""
+    },{merge:true});
+    applyCustomRoles();
+    showToast("角色設定已儲存");
+  }catch(e){
+    console.error("儲存角色失敗:",e);
+    showToast("儲存失敗","error");
+  }
+}
 function updateUserDisplay(){
   const ava=$("user-ava"), name=$("user-name"), role=$("user-role");
   if(currentUser){
     ava.textContent=(currentUser.email||"U").charAt(0).toUpperCase();
     name.textContent=currentUser.email.split("@")[0]||"User";
-    const roleLabel={admin:"系統管理員",manager:"主管",operator:"操作員",floor:"現場人員",sales:"業務",purchaser:"採購人員",designer:"設計師"}[currentUserRole]||"使用者";
-    role.textContent=roleLabel;
+    role.textContent=getRoleLabel(currentUserRole);
   }
 }
 async function subscribeToFirestore(){
@@ -3797,6 +3880,16 @@ function renderAnalytics(){
 }
 function renderUsers(){
   if(currentUserRole!=="admin")return `<div class="card"><div style="padding:20px;text-align:center;color:var(--muted)">只有管理員可以管理使用者。</div></div>`;
+  const userTab=state.userMgmtTab||"users";
+  return `
+  <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
+    <button class="chip${userTab==="users"?" on":""}" onclick="state.userMgmtTab='users';render()">👥 使用者管理</button>
+    <button class="chip${userTab==="roles"?" on":""}" onclick="state.userMgmtTab='roles';render()">🎭 角色管理</button>
+    <button class="chip${userTab==="perms"?" on":""}" onclick="state.userMgmtTab='perms';render()">🔐 頁面權限</button>
+  </div>
+  ${userTab==="users"?renderUserList():userTab==="roles"?renderRoleManager():renderTabPermissions()}`;
+}
+function renderUserList(){
   return `
   <div class="card">
     <div class="card-title">👥 使用者管理</div>
@@ -3807,13 +3900,7 @@ function renderUsers(){
           <td style="font-weight:600;white-space:nowrap">${esc(u.email)}</td>
           <td>
             <select style="background:#060C1A;border:1px solid var(--border2);border-radius:6px;padding:4px 8px;color:var(--text);font-size:12px;cursor:pointer" onchange="updateUserRole('${u.uid}',this.value)">
-              <option value="admin"${u.role==="admin"?" selected":""}>系統管理員</option>
-              <option value="manager"${u.role==="manager"?" selected":""}>主管</option>
-              <option value="operator"${u.role==="operator"?" selected":""}>操作員</option>
-              <option value="floor"${u.role==="floor"?" selected":""}>現場人員</option>
-              <option value="sales"${u.role==="sales"?" selected":""}>業務</option>
-              <option value="purchaser"${u.role==="purchaser"?" selected":""}>採購人員</option>
-              <option value="designer"${u.role==="designer"?" selected":""}>設計師</option>
+              ${customRoles.map(r=>`<option value="${r.id}"${u.role===r.id?" selected":""}>${esc(r.label)}</option>`).join("")}
             </select>
           </td>
           <td style="font-size:12px;color:var(--muted)">${u.created?new Date(u.created.toDate()).toLocaleDateString("zh-TW"):"-"}</td>
@@ -3830,6 +3917,183 @@ function renderUsers(){
     </div>
     <div style="font-size:12px;color:var(--muted)">新使用者將收到註冊連結，默認角色為「現場人員」</div>
   </div>`;
+}
+// ─── 角色管理 ──────────────────────────────────────────────
+function renderRoleManager(){
+  return `
+  <div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <div class="card-title" style="margin:0">🎭 角色管理</div>
+      <button class="accent-btn" onclick="openNewRoleModal()">＋ 新增角色</button>
+    </div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:14px">管理系統中所有角色。系統角色（管理員、主管）不可刪除。新增角色後可在「頁面權限」設定可存取的功能頁面。</div>
+    <div style="display:flex;flex-direction:column;gap:8px">
+      ${customRoles.map((r,i)=>`
+        <div style="display:flex;align-items:center;gap:10px;padding:12px;background:#0F172A;border-radius:10px;border-left:4px solid ${r.color||"#64748B"}">
+          <div style="width:36px;height:36px;border-radius:50%;background:${r.color||"#64748B"}22;border:2px solid ${r.color||"#64748B"};display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:800;color:${r.color||"#64748B"};flex-shrink:0">${(r.label||"?").charAt(0)}</div>
+          <div style="flex:1">
+            <div style="font-weight:700;font-size:14px">${esc(r.label)}</div>
+            <div style="font-size:11px;color:var(--muted)">ID: ${r.id}${r.isSystem?" · 系統角色":""}</div>
+          </div>
+          <div style="display:flex;gap:6px">
+            <button class="icon-btn" style="color:#3B82F6;font-size:12px" onclick="openEditRoleModal(${i})">✏️ 編輯</button>
+            ${!r.isSystem?`<button class="icon-btn" style="color:#EF4444;font-size:12px" onclick="deleteRole(${i})">🗑️ 刪除</button>`:`<span style="font-size:11px;color:var(--dim);padding:4px 8px">🔒</span>`}
+          </div>
+        </div>
+      `).join("")}
+    </div>
+  </div>
+  <div class="card">
+    <div style="font-size:12px;color:var(--muted);line-height:1.8">
+      <strong>角色使用說明：</strong><br>
+      • 新增角色後，在「頁面權限」分頁設定該角色可存取的功能頁面<br>
+      • 在「使用者管理」分頁可為使用者指定角色<br>
+      • 系統管理員(admin)永遠擁有所有權限<br>
+      • 刪除角色前請確認沒有使用者正在使用該角色
+    </div>
+  </div>`;
+}
+function openNewRoleModal(){
+  $("modal-box").innerHTML=`
+    <div class="modal-head"><div class="modal-title">🎭 新增角色</div><button class="close-btn" onclick="closeModal()">✕</button></div>
+    <div class="form-field"><label class="lbl">角色 ID（英文，不可重複）*</label><input class="inp" id="new-role-id" placeholder="例如: qc_inspector"></div>
+    <div class="form-field"><label class="lbl">角色名稱（中文顯示名）*</label><input class="inp" id="new-role-label" placeholder="例如: 品檢人員"></div>
+    <div class="form-field">
+      <label class="lbl">代表顏色</label>
+      <div style="display:flex;gap:6px;flex-wrap:wrap" id="role-color-pick">
+        ${["#EF4444","#F59E0B","#22C55E","#3B82F6","#8B5CF6","#EC4899","#14B8A6","#F97316","#6366F1","#64748B","#DC2626","#059669"].map(c=>`<button style="width:32px;height:32px;border-radius:50%;border:2px solid transparent;background:${c};cursor:pointer" onclick="document.querySelectorAll('#role-color-pick button').forEach(b=>b.style.borderColor='transparent');this.style.borderColor='#fff';document.getElementById('new-role-color').value='${c}'"></button>`).join("")}
+      </div>
+      <input type="hidden" id="new-role-color" value="#3B82F6">
+    </div>
+    <button class="accent-btn" style="width:100%;padding:12px;margin-top:10px" onclick="submitNewRole()">✅ 新增角色</button>`;
+  $("modal-wrap").classList.add("show");
+}
+function submitNewRole(){
+  const id=($("new-role-id")?.value||"").trim().toLowerCase().replace(/[^a-z0-9_]/g,"");
+  const label=($("new-role-label")?.value||"").trim();
+  const color=$("new-role-color")?.value||"#3B82F6";
+  if(!id){showToast("請輸入角色 ID","error");return;}
+  if(!label){showToast("請輸入角色名稱","error");return;}
+  if(customRoles.some(r=>r.id===id)){showToast("此角色 ID 已存在","error");return;}
+  customRoles.push({id,label,color,isSystem:false});
+  // 自動給新角色 dashboard 和 notif 權限
+  TAB_DEFS.forEach(t=>{
+    if(t.defaultRoles==="all"){
+      if(!tabPermissions[t.id])tabPermissions[t.id]=getAllRoleIds();
+      else if(!tabPermissions[t.id].includes(id))tabPermissions[t.id].push(id);
+    }
+  });
+  saveCustomRoles();
+  closeModal();
+  render();
+}
+function openEditRoleModal(idx){
+  const r=customRoles[idx];if(!r)return;
+  $("modal-box").innerHTML=`
+    <div class="modal-head"><div class="modal-title">✏️ 編輯角色 — ${esc(r.label)}</div><button class="close-btn" onclick="closeModal()">✕</button></div>
+    <div class="form-field"><label class="lbl">角色 ID</label><input class="inp" value="${r.id}" disabled style="opacity:.5"></div>
+    <div class="form-field"><label class="lbl">角色名稱*</label><input class="inp" id="edit-role-label" value="${esc(r.label)}"></div>
+    <div class="form-field">
+      <label class="lbl">代表顏色</label>
+      <div style="display:flex;gap:6px;flex-wrap:wrap" id="role-color-pick">
+        ${["#EF4444","#F59E0B","#22C55E","#3B82F6","#8B5CF6","#EC4899","#14B8A6","#F97316","#6366F1","#64748B","#DC2626","#059669"].map(c=>`<button style="width:32px;height:32px;border-radius:50%;border:2px solid ${c===r.color?"#fff":"transparent"};background:${c};cursor:pointer" onclick="document.querySelectorAll('#role-color-pick button').forEach(b=>b.style.borderColor='transparent');this.style.borderColor='#fff';document.getElementById('edit-role-color').value='${c}'"></button>`).join("")}
+      </div>
+      <input type="hidden" id="edit-role-color" value="${r.color||"#3B82F6"}">
+    </div>
+    <button class="accent-btn" style="width:100%;padding:12px;margin-top:10px" onclick="submitEditRole(${idx})">💾 儲存變更</button>`;
+  $("modal-wrap").classList.add("show");
+}
+function submitEditRole(idx){
+  const label=($("edit-role-label")?.value||"").trim();
+  const color=$("edit-role-color")?.value||"#3B82F6";
+  if(!label){showToast("請輸入角色名稱","error");return;}
+  customRoles[idx].label=label;
+  customRoles[idx].color=color;
+  saveCustomRoles();
+  closeModal();
+  updateUserDisplay();
+  render();
+}
+function deleteRole(idx){
+  const r=customRoles[idx];
+  if(!r||r.isSystem){showToast("系統角色不可刪除","error");return;}
+  // 檢查是否有使用者使用此角色
+  const usersWithRole=state.users.filter(u=>u.role===r.id);
+  if(usersWithRole.length>0){
+    showToast(`有 ${usersWithRole.length} 位使用者正在使用「${r.label}」角色，請先變更其角色`,"error");
+    return;
+  }
+  if(!confirm(`確定要刪除角色「${r.label}」？`))return;
+  customRoles.splice(idx,1);
+  // 從 tabPermissions 中移除
+  Object.keys(tabPermissions).forEach(tabId=>{
+    tabPermissions[tabId]=tabPermissions[tabId].filter(rid=>rid!==r.id);
+  });
+  saveCustomRoles();
+  render();
+}
+// ─── 頁面權限管理 ──────────────────────────────────────────
+function renderTabPermissions(){
+  const allRoles=customRoles.filter(r=>r.id!=="admin"); // admin 永遠有全部權限
+  return `
+  <div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <div class="card-title" style="margin:0">🔐 頁面存取權限</div>
+      <button class="accent-btn" onclick="saveTabPermissions()">💾 儲存權限</button>
+    </div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:14px">設定各角色可存取的功能頁面。管理員(admin)永遠擁有所有權限。勾選後請點「儲存權限」。</div>
+    <div style="overflow-x:auto">
+      <table style="width:100%;font-size:12px;border-collapse:collapse;min-width:600px">
+        <thead>
+          <tr style="border-bottom:2px solid var(--border2)">
+            <th style="padding:8px;text-align:left;font-weight:700;position:sticky;left:0;background:var(--surface)">功能頁面</th>
+            ${allRoles.map(r=>`<th style="padding:8px;text-align:center;font-weight:600;min-width:60px"><div style="color:${r.color}">${esc(r.label)}</div></th>`).join("")}
+          </tr>
+        </thead>
+        <tbody>
+          ${TAB_DEFS.filter(t=>t.id!=="users").map(t=>{
+            const currentRoles=TABS.find(x=>x.id===t.id)?.roles||[];
+            return `<tr style="border-bottom:1px solid var(--border)">
+              <td style="padding:8px;font-weight:600;position:sticky;left:0;background:var(--surface)">${t.icon} ${t.label}</td>
+              ${allRoles.map(r=>`<td style="padding:8px;text-align:center">
+                <input type="checkbox" class="perm-cb" data-tab="${t.id}" data-role="${r.id}" ${currentRoles.includes(r.id)?"checked":""} style="width:18px;height:18px;cursor:pointer;accent-color:${r.color}">
+              </td>`).join("")}
+            </tr>`;
+          }).join("")}
+        </tbody>
+      </table>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:12px">
+      <button class="icon-btn" style="font-size:11px;color:#3B82F6;border:1px solid var(--border2);border-radius:6px;padding:6px 10px" onclick="selectAllPerms()">全選</button>
+      <button class="icon-btn" style="font-size:11px;color:var(--muted);border:1px solid var(--border2);border-radius:6px;padding:6px 10px" onclick="resetPermsToDefault()">還原預設</button>
+    </div>
+  </div>`;
+}
+function saveTabPermissions(){
+  const cbs=document.querySelectorAll(".perm-cb");
+  const newPerms={};
+  cbs.forEach(cb=>{
+    const tabId=cb.dataset.tab;
+    const roleId=cb.dataset.role;
+    if(!newPerms[tabId])newPerms[tabId]=["admin"];
+    if(cb.checked&&!newPerms[tabId].includes(roleId))newPerms[tabId].push(roleId);
+  });
+  // users 頁永遠只有 admin
+  newPerms["users"]=["admin"];
+  tabPermissions=newPerms;
+  saveCustomRoles();
+  render();
+}
+function selectAllPerms(){
+  document.querySelectorAll(".perm-cb").forEach(cb=>cb.checked=true);
+  showToast("已全選，請記得點「儲存權限」");
+}
+function resetPermsToDefault(){
+  if(!confirm("確定要還原所有頁面權限為預設值？"))return;
+  tabPermissions={};
+  saveCustomRoles();
+  render();
+  showToast("已還原為預設權限");
 }
 async function updateUserRole(uid,role){
   try{
