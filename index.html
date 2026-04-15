@@ -14,6 +14,8 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script>if(window.pdfjsLib)pdfjsLib.GlobalWorkerOptions.workerSrc="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";</script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 :root{
@@ -2797,10 +2799,10 @@ function renderBomManager(){
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
       <div class="card-title" style="margin:0">📋 BOM 材料清單總覽</div>
       <div style="display:flex;gap:8px">
-        <button class="accent-btn" onclick="openBomOcrModal()">📷 拍照辨識匯入</button>
+        <button class="accent-btn" onclick="openBomOcrModal()">📄 PDF 圖面匯入</button>
       </div>
     </div>
-    <div style="font-size:12px;color:var(--muted);margin-bottom:14px">支援上傳圖面/BOM表格照片，系統自動 OCR 辨識文字並匯入 BOM。也可手動編輯每個案件的 BOM。</div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:14px">支援上傳 PDF 圖面檔案，系統自動讀取文字層擷取零件標註、尺寸規格、材質等細項並匯入 BOM。支援 AutoCAD/SolidWorks 輸出的 PDF、掃描PDF（自動OCR）、圖片。</div>
   </div>
   ${state.designProjects.length===0?'<div class="card"><div style="text-align:center;color:var(--muted);padding:20px">尚無設計案件，請先建立案件</div></div>':""}
   ${state.designProjects.map(p=>{
@@ -2811,10 +2813,10 @@ function renderBomManager(){
         <div><span class="wo-tag">${p.id}</span> <span style="font-weight:700;font-size:14px">${esc(p.projectName)}</span> <span style="color:var(--muted);font-size:12px">${esc(p.customer||"")}</span></div>
         <div style="display:flex;gap:6px">
           <button class="icon-btn" style="color:#3B82F6" onclick="openBomEditModal('${p.id}')">✏️ 編輯</button>
-          <button class="icon-btn" style="color:#8B5CF6" onclick="openBomOcrModal('${p.id}')">📷 辨識</button>
+          <button class="icon-btn" style="color:#8B5CF6" onclick="openBomOcrModal('${p.id}')">📄 PDF讀取</button>
         </div>
       </div>
-      ${bom.length===0?'<div style="color:var(--muted);font-size:12px;text-align:center;padding:8px">尚無BOM資料，點「✏️ 編輯」手動新增或「📷 辨識」圖片匯入</div>':`
+      ${bom.length===0?'<div style="color:var(--muted);font-size:12px;text-align:center;padding:8px">尚無BOM資料，點「✏️ 編輯」手動新增或「📄 PDF讀取」匯入圖面</div>':`
       <div style="overflow-x:auto"><table style="width:100%;font-size:12px;border-collapse:collapse">
         <tr style="color:var(--muted);border-bottom:1px solid var(--border2)"><th style="padding:6px;text-align:left">#</th><th style="padding:6px;text-align:left">品名</th><th style="padding:6px">規格/尺寸</th><th style="padding:6px">數量</th><th style="padding:6px">材質</th><th style="padding:6px">單位</th><th style="padding:6px;text-align:left">備註</th>${bom[0]?.photo?'<th style="padding:6px">圖片</th>':""}</tr>
         ${bom.map((b,i)=>`<tr style="border-bottom:1px solid var(--border)">
@@ -2842,7 +2844,7 @@ function openBomEditModal(projectId){
     </div>
     <div style="display:flex;gap:8px;margin-top:8px">
       <button class="icon-btn" style="flex:1;text-align:center;padding:10px;border:1px dashed var(--border2);border-radius:8px" onclick="addBomEditRow()">＋ 手動新增項目</button>
-      <button class="icon-btn" style="flex:1;text-align:center;padding:10px;border:1px dashed #8B5CF6;border-radius:8px;color:#8B5CF6" onclick="closeModal();setTimeout(()=>openBomOcrModal('${p.id}'),200)">📷 圖片辨識匯入</button>
+      <button class="icon-btn" style="flex:1;text-align:center;padding:10px;border:1px dashed #8B5CF6;border-radius:8px;color:#8B5CF6" onclick="closeModal();setTimeout(()=>openBomOcrModal('${p.id}'),200)">📄 PDF 圖面匯入</button>
     </div>
     <button class="accent-btn" style="width:100%;padding:12px;margin-top:14px" onclick="saveBomEdit('${p.id}')">💾 儲存 BOM</button>`;
   $("modal-wrap").classList.add("show");
@@ -2916,50 +2918,151 @@ async function saveBomEdit(projectId){
     pushNotif(`${projectId} BOM 已更新 (${bom.length}項)`,"success");showToast(`BOM 已儲存 (${bom.length}項)`);closeModal();
   }catch(e){showToast("儲存失敗","error");}
 }
-// ─── OCR 圖片辨識匯入 ──────────────────────────────────────
+// ─── 圖面辨識分析系統 ──────────────────────────────────────
 let ocrTargetProject="";
+let ocrMode="drawing"; // drawing|table|titleblock
+// 影像前處理：增強對比、銳化、二值化（提升OCR辨識率）
+function preprocessImage(imgSrc,mode){
+  return new Promise((resolve,reject)=>{
+    const img=new Image();img.crossOrigin="anonymous";
+    img.onload=()=>{
+      const cv=document.createElement("canvas");const ctx=cv.getContext("2d");
+      // 高解析度
+      const maxW=2000,maxH=2000;
+      let w=img.width,h=img.height;
+      if(w>maxW){h=h*(maxW/w);w=maxW;}
+      if(h>maxH){w=w*(maxH/h);h=maxH;}
+      cv.width=w;cv.height=h;
+      ctx.drawImage(img,0,0,w,h);
+      const imageData=ctx.getImageData(0,0,w,h);
+      const d=imageData.data;
+      // Step1: 灰階
+      for(let i=0;i<d.length;i+=4){
+        const gray=0.299*d[i]+0.587*d[i+1]+0.114*d[i+2];
+        d[i]=d[i+1]=d[i+2]=gray;
+      }
+      // Step2: 對比增強 (CLAHE-like簡化版)
+      let min=255,max=0;
+      for(let i=0;i<d.length;i+=4){if(d[i]<min)min=d[i];if(d[i]>max)max=d[i];}
+      const range=max-min||1;
+      for(let i=0;i<d.length;i+=4){
+        let v=((d[i]-min)/range)*255;
+        // 額外拉大對比
+        v=v<128?v*0.7:128+(v-128)*1.3;
+        v=Math.max(0,Math.min(255,v));
+        d[i]=d[i+1]=d[i+2]=v;
+      }
+      // Step3: 自適應二值化 (適合工程圖面)
+      if(mode==="drawing"||mode==="titleblock"){
+        const blockSize=15;
+        const C=10;
+        const gray=new Uint8Array(w*h);
+        for(let i=0;i<gray.length;i++)gray[i]=d[i*4];
+        // 積分影像
+        const integral=new Float64Array(w*h);
+        for(let y=0;y<h;y++){
+          let rowSum=0;
+          for(let x=0;x<w;x++){
+            rowSum+=gray[y*w+x];
+            integral[y*w+x]=rowSum+(y>0?integral[(y-1)*w+x]:0);
+          }
+        }
+        for(let y=0;y<h;y++){
+          for(let x=0;x<w;x++){
+            const half=Math.floor(blockSize/2);
+            const x1=Math.max(0,x-half),y1=Math.max(0,y-half);
+            const x2=Math.min(w-1,x+half),y2=Math.min(h-1,y+half);
+            const count=(x2-x1+1)*(y2-y1+1);
+            let sum=integral[y2*w+x2];
+            if(x1>0)sum-=integral[y2*w+(x1-1)];
+            if(y1>0)sum-=integral[(y1-1)*w+x2];
+            if(x1>0&&y1>0)sum+=integral[(y1-1)*w+(x1-1)];
+            const threshold=sum/count-C;
+            const idx=(y*w+x)*4;
+            const val=gray[y*w+x]<threshold?0:255;
+            d[idx]=d[idx+1]=d[idx+2]=val;
+          }
+        }
+      }
+      // Step4: 反色檢測 (若白色佔少數，代表可能是深色底圖)
+      let whiteCount=0;
+      for(let i=0;i<d.length;i+=4){if(d[i]>200)whiteCount++;}
+      if(whiteCount<d.length/4*0.3){
+        for(let i=0;i<d.length;i+=4){d[i]=255-d[i];d[i+1]=255-d[i+1];d[i+2]=255-d[i+2];}
+      }
+      ctx.putImageData(imageData,0,0);
+      resolve(cv.toDataURL("image/png",1.0));
+    };
+    img.onerror=()=>reject(new Error("圖片載入失敗"));
+    img.src=imgSrc;
+  });
+}
+
+let pdfPageImages=[]; // 存放PDF各頁渲染後的圖片dataUrl
+let pdfFileData=null; // 存放PDF ArrayBuffer
+
 function openBomOcrModal(projectId){
   ocrTargetProject=projectId||"";
+  pdfPageImages=[];pdfFileData=null;
   const projectOpts=state.designProjects.map(p=>`<option value="${p.id}"${p.id===ocrTargetProject?" selected":""}>${p.id} — ${esc(p.projectName)}</option>`).join("");
   $("modal-box").innerHTML=`
-    <div class="modal-head"><div class="modal-title">📷 BOM 圖片辨識匯入</div><button class="close-btn" onclick="closeModal()">✕</button></div>
+    <div class="modal-head"><div class="modal-title">📄 圖面 PDF 讀取分析</div><button class="close-btn" onclick="closeModal()">✕</button></div>
     <div style="margin-bottom:10px"><label class="lbl">匯入到案件*</label><select class="inp" id="ocr-project"><option value="">— 選擇案件 —</option>${projectOpts}</select></div>
-    <div style="margin-bottom:14px">
-      <label class="lbl">上傳 BOM 表格圖片（圖面、表格截圖、手寫均可）</label>
-      <div style="display:flex;gap:8px;margin-top:6px">
-        <label style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:120px;border:2px dashed var(--border2);border-radius:12px;cursor:pointer;color:var(--muted);text-align:center;padding:16px">
-          <span style="font-size:36px">📷</span>
-          <span style="font-size:12px;margin-top:6px">拍照上傳</span>
-          <input type="file" accept="image/*" capture="environment" style="display:none" onchange="previewOcrImage(this)">
-        </label>
-        <label style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:120px;border:2px dashed var(--border2);border-radius:12px;cursor:pointer;color:var(--muted);text-align:center;padding:16px">
-          <span style="font-size:36px">📁</span>
-          <span style="font-size:12px;margin-top:6px">選擇檔案</span>
-          <input type="file" accept="image/*" style="display:none" onchange="previewOcrImage(this)">
-        </label>
+    <div style="margin-bottom:12px">
+      <label class="lbl">分析模式</label>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
+        <button class="chip on" id="ocr-mode-drawing" onclick="setOcrMode('drawing')">📐 圖面零件分析</button>
+        <button class="chip" id="ocr-mode-titleblock" onclick="setOcrMode('titleblock')">📋 標題欄擷取</button>
+        <button class="chip" id="ocr-mode-table" onclick="setOcrMode('table')">📊 BOM表格辨識</button>
       </div>
-      <div id="ocr-preview" style="margin-top:10px;text-align:center;display:none">
-        <img id="ocr-preview-img" style="max-width:100%;max-height:300px;border-radius:8px;border:1px solid var(--border2)">
-      </div>
-      <input type="hidden" id="ocr-image-data">
+      <div id="ocr-mode-desc" style="font-size:11px;color:var(--muted);margin-top:6px;padding:6px;background:#0F172A;border-radius:6px">📐 從工程圖面PDF抓取零件名稱、材質標註、尺寸規格、數量等細項</div>
     </div>
-    <div style="margin-bottom:10px">
-      <label class="lbl">辨識語言</label>
+    <div style="margin-bottom:14px">
+      <label class="lbl">上傳 PDF 圖面檔案 或 圖片</label>
+      <div style="display:flex;gap:8px;margin-top:6px">
+        <label style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:120px;border:2px dashed var(--blue);border-radius:12px;cursor:pointer;color:var(--blue);text-align:center;padding:16px;transition:background .2s" onmouseover="this.style.background='#0F2344'" onmouseout="this.style.background=''">
+          <span style="font-size:36px">📄</span>
+          <span style="font-size:13px;margin-top:6px;font-weight:700">PDF 圖面檔案</span>
+          <span style="font-size:10px;color:var(--muted);margin-top:2px">AutoCAD/SolidWorks/PDF</span>
+          <input type="file" accept=".pdf,application/pdf" style="display:none" onchange="handlePdfUpload(this)">
+        </label>
+        <label style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:120px;border:2px dashed var(--border2);border-radius:12px;cursor:pointer;color:var(--muted);text-align:center;padding:16px;transition:border-color .2s" onmouseover="this.style.borderColor='#3B82F6'" onmouseout="this.style.borderColor=''">
+          <span style="font-size:36px">📷</span>
+          <span style="font-size:13px;margin-top:6px">圖片/拍照</span>
+          <span style="font-size:10px;color:var(--muted);margin-top:2px">截圖、拍照、JPG/PNG</span>
+          <input type="file" accept="image/*" capture="environment" style="display:none" onchange="handleImageUpload(this)">
+        </label>
+      </div>
+    </div>
+    <div id="ocr-preview" style="display:none;margin-top:10px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+        <div class="lbl" style="margin:0" id="ocr-file-info">檔案預覽</div>
+        <div id="ocr-page-nav" style="display:none;font-size:12px;color:var(--muted)"></div>
+      </div>
+      <div style="text-align:center;max-height:300px;overflow-y:auto;border:1px solid var(--border2);border-radius:8px;padding:4px" id="ocr-preview-scroll">
+        <img id="ocr-preview-img" style="max-width:100%;border-radius:4px">
+      </div>
+    </div>
+    <input type="hidden" id="ocr-image-data">
+    <input type="hidden" id="ocr-image-processed">
+    <input type="hidden" id="ocr-file-type" value="">
+    <div style="margin-top:12px;margin-bottom:10px">
+      <label class="lbl">辨識語言（掃描PDF/圖片用）</label>
       <div style="display:flex;gap:8px">
         <button class="chip on" id="ocr-lang-chi" onclick="setOcrLang('chi_tra+eng')">中文+英文</button>
         <button class="chip" id="ocr-lang-eng" onclick="setOcrLang('eng')">純英文</button>
       </div>
       <input type="hidden" id="ocr-lang" value="chi_tra+eng">
     </div>
-    <button class="accent-btn" style="width:100%;padding:12px" id="ocr-start-btn" onclick="startOcr()">🔍 開始辨識</button>
+    <button class="accent-btn" style="width:100%;padding:12px" id="ocr-start-btn" onclick="startAnalysis()">🔍 開始分析</button>
     <div id="ocr-progress" style="display:none;margin-top:14px">
       <div style="font-size:13px;font-weight:600;margin-bottom:6px" id="ocr-status-text">準備中...</div>
       <div class="bar-bg" style="height:8px"><div class="bar-fill" id="ocr-bar" style="height:8px;width:0%;background:linear-gradient(90deg,#3B82F6,#8B5CF6);transition:width .3s"></div></div>
     </div>
     <div id="ocr-result" style="display:none;margin-top:14px">
-      <div class="lbl">辨識結果（可編輯後匯入）</div>
-      <textarea class="inp" id="ocr-text" rows="6" style="resize:vertical;font-size:12px;font-family:monospace"></textarea>
-      <button class="accent-btn" style="width:100%;padding:12px;margin-top:10px;background:#8B5CF6" onclick="parseOcrToBom()">📋 解析並匯入 BOM</button>
+      <div class="lbl">擷取文字內容（可編輯）</div>
+      <textarea class="inp" id="ocr-text" rows="6" style="resize:vertical;font-size:11px;font-family:monospace"></textarea>
+      <button class="accent-btn" style="width:100%;padding:12px;margin-top:10px;background:#8B5CF6" onclick="parseDrawingToBom()">📋 智慧解析為 BOM</button>
     </div>
     <div id="ocr-parsed" style="display:none;margin-top:14px">
       <div class="lbl">解析結果預覽</div>
@@ -2968,32 +3071,266 @@ function openBomOcrModal(projectId){
     </div>`;
   $("modal-wrap").classList.add("show");
 }
+
+function setOcrMode(mode){
+  ocrMode=mode;
+  document.querySelectorAll("[id^=ocr-mode-]").forEach(b=>{if(b.id.startsWith("ocr-mode-")&&b.id!=="ocr-mode-desc")b.classList.remove("on");});
+  const btn=$("ocr-mode-"+mode);if(btn)btn.classList.add("on");
+  const descs={
+    drawing:"📐 從工程圖面PDF抓取零件名稱、材質標註、尺寸規格、數量等細項",
+    titleblock:"📋 擷取圖面標題欄：圖號、名稱、材質、版次、比例等",
+    table:"📊 辨識BOM表格、零件清單、材料明細表等表格格式"
+  };
+  const el=$("ocr-mode-desc");if(el)el.innerHTML=descs[mode]||"";
+}
+
 function setOcrLang(lang){
   $("ocr-lang").value=lang;
   document.querySelectorAll("[id^=ocr-lang-]").forEach(b=>b.classList.remove("on"));
   if(lang.includes("chi"))$("ocr-lang-chi").classList.add("on");
   else $("ocr-lang-eng").classList.add("on");
 }
-async function previewOcrImage(input){
+
+// ─── PDF 上傳處理 ──────────────────────────────────────────
+async function handlePdfUpload(input){
+  const file=input.files[0];if(!file)return;
+  if(!file.name.toLowerCase().endsWith(".pdf")){showToast("請上傳 PDF 檔案","error");return;}
+  showToast("載入 PDF 中...");
+  $("ocr-file-type").value="pdf";
+  pdfPageImages=[];
+
+  try{
+    const arrayBuf=await file.arrayBuffer();
+    pdfFileData=arrayBuf;
+
+    if(!window.pdfjsLib){showToast("PDF.js 尚未載入，請稍候重試","error");return;}
+    const pdf=await pdfjsLib.getDocument({data:arrayBuf}).promise;
+    const totalPages=pdf.numPages;
+
+    $("ocr-file-info").textContent=`📄 ${esc(file.name)} — ${totalPages} 頁`;
+    $("ocr-preview").style.display="block";
+
+    // 渲染每頁為圖片
+    const previewScroll=$("ocr-preview-scroll");
+    previewScroll.innerHTML="";
+    for(let i=1;i<=Math.min(totalPages,20);i++){
+      const page=await pdf.getPage(i);
+      const scale=2.0; // 高解析度渲染
+      const viewport=page.getViewport({scale});
+      const canvas=document.createElement("canvas");
+      canvas.width=viewport.width;canvas.height=viewport.height;
+      const ctx=canvas.getContext("2d");
+      await page.render({canvasContext:ctx,viewport}).promise;
+      const dataUrl=canvas.toDataURL("image/png",0.95);
+      pdfPageImages.push(dataUrl);
+
+      // 顯示預覽
+      const pageDiv=document.createElement("div");
+      pageDiv.style.cssText="margin-bottom:8px;position:relative";
+      pageDiv.innerHTML=`<div style="position:absolute;top:4px;left:4px;background:rgba(0,0,0,.7);color:#fff;padding:2px 8px;border-radius:4px;font-size:10px">第 ${i} 頁</div><img src="${dataUrl}" style="max-width:100%;border-radius:4px;border:1px solid var(--border2)">`;
+      previewScroll.appendChild(pageDiv);
+    }
+
+    if(totalPages>20){
+      previewScroll.innerHTML+=`<div style="text-align:center;color:var(--muted);font-size:12px;padding:10px">僅顯示前 20 頁</div>`;
+    }
+
+    const pageNav=$("ocr-page-nav");
+    pageNav.style.display="block";
+    pageNav.textContent=`共 ${totalPages} 頁，已載入 ${Math.min(totalPages,20)} 頁`;
+
+    showToast(`PDF 已載入 (${totalPages}頁)，點擊開始分析`);
+  }catch(e){
+    console.error("PDF載入失敗:",e);
+    showToast("PDF 載入失敗："+e.message,"error");
+  }
+}
+
+// ─── 圖片上傳處理 ──────────────────────────────────────────
+async function handleImageUpload(input){
   const file=input.files[0];if(!file)return;
   showToast("處理圖片中...");
+  $("ocr-file-type").value="image";
+  pdfPageImages=[];pdfFileData=null;
   try{
-    const dataUrl=await compressImage(file,1200,0.8);
+    const dataUrl=await compressImage(file,2000,0.9);
     $("ocr-image-data").value=dataUrl;
-    $("ocr-preview-img").src=dataUrl;
     $("ocr-preview").style.display="block";
-    showToast("圖片已載入，點擊開始辨識");
+    $("ocr-file-info").textContent=`🖼️ ${esc(file.name)}`;
+    $("ocr-page-nav").style.display="none";
+    const previewScroll=$("ocr-preview-scroll");
+    previewScroll.innerHTML=`<img id="ocr-preview-img" src="${dataUrl}" style="max-width:100%;border-radius:4px">`;
+    // 影像前處理
+    const processed=await preprocessImage(dataUrl,ocrMode);
+    $("ocr-image-processed").value=processed;
+    showToast("圖片已載入，點擊開始分析");
   }catch(e){showToast("圖片處理失敗","error");}
 }
-async function startOcr(){
-  const imageData=$("ocr-image-data")?.value;
-  if(!imageData){showToast("請先上傳圖片","error");return;}
+
+// ─── 主分析流程 ──────────────────────────────────────────
+async function startAnalysis(){
+  const fileType=$("ocr-file-type")?.value;
+  if(fileType==="pdf"){
+    await startPdfAnalysis();
+  }else if(fileType==="image"){
+    await startImageOcr();
+  }else{
+    showToast("請先上傳 PDF 或圖片檔案","error");
+  }
+}
+
+// ─── PDF 文字直接擷取（最精確）──────────────────────────────
+async function startPdfAnalysis(){
+  if(!pdfFileData){showToast("請先上傳 PDF","error");return;}
+  $("ocr-progress").style.display="block";
+  $("ocr-result").style.display="none";
+  $("ocr-parsed").style.display="none";
+  $("ocr-start-btn").disabled=true;
+  $("ocr-start-btn").textContent="分析中...";
+  $("ocr-status-text").textContent="讀取 PDF 文字層...";
+  $("ocr-bar").style.width="10%";
+
+  try{
+    const pdf=await pdfjsLib.getDocument({data:pdfFileData}).promise;
+    const totalPages=pdf.numPages;
+    let allText="";
+
+    // Step1: 嘗試直接擷取文字層
+    for(let i=1;i<=Math.min(totalPages,20);i++){
+      const page=await pdf.getPage(i);
+      const textContent=await page.getTextContent();
+      const pageText=extractTextFromPdfPage(textContent);
+      if(pageText.trim()){
+        allText+=(totalPages>1?`\n===== 第 ${i} 頁 =====\n`:"")+pageText;
+      }
+      const pct=Math.round((i/Math.min(totalPages,20))*60);
+      $("ocr-bar").style.width=pct+"%";
+      $("ocr-status-text").textContent=`讀取第 ${i}/${Math.min(totalPages,20)} 頁...`;
+    }
+
+    // 判斷是否為掃描PDF（文字極少）
+    const cleanText=allText.replace(/\s+/g,"");
+    if(cleanText.length<20){
+      // 掃描PDF → 用OCR辨識渲染後的圖片
+      $("ocr-status-text").textContent="偵測為掃描PDF，啟動 OCR 辨識...";
+      $("ocr-bar").style.width="65%";
+      allText=await ocrPdfPages();
+    }
+
+    $("ocr-text").value=allText;
+    $("ocr-result").style.display="block";
+    $("ocr-status-text").textContent="✅ PDF 分析完成！";
+    $("ocr-bar").style.width="100%";
+
+    showToast("分析完成，自動解析中...");
+    setTimeout(()=>parseDrawingToBom(),300);
+  }catch(e){
+    console.error("PDF分析失敗:",e);
+    $("ocr-status-text").textContent="❌ 分析失敗";
+    showToast("PDF 分析失敗："+e.message,"error");
+  }
+  $("ocr-start-btn").disabled=false;
+  $("ocr-start-btn").textContent="🔍 重新分析";
+}
+
+// 從 PDF.js textContent 擷取結構化文字
+function extractTextFromPdfPage(textContent){
+  if(!textContent||!textContent.items||textContent.items.length===0)return"";
+  // 按 Y 座標分行，再按 X 座標排序
+  const items=textContent.items.filter(it=>it.str&&it.str.trim());
+  if(items.length===0)return"";
+
+  // 群組化為行（Y座標接近的視為同一行）
+  const lineThreshold=5;
+  const lines=[];
+  let currentLine=[];
+  let lastY=null;
+
+  // 先按Y降序（PDF座標從底部開始），再按X升序
+  const sorted=[...items].sort((a,b)=>{
+    const ya=a.transform?a.transform[5]:0;
+    const yb=b.transform?b.transform[5]:0;
+    if(Math.abs(ya-yb)>lineThreshold)return yb-ya; // Y降序
+    const xa=a.transform?a.transform[4]:0;
+    const xb=b.transform?b.transform[4]:0;
+    return xa-xb; // X升序
+  });
+
+  sorted.forEach(item=>{
+    const y=item.transform?item.transform[5]:0;
+    if(lastY===null||Math.abs(y-lastY)>lineThreshold){
+      if(currentLine.length)lines.push(currentLine);
+      currentLine=[item];
+      lastY=y;
+    }else{
+      currentLine.push(item);
+    }
+  });
+  if(currentLine.length)lines.push(currentLine);
+
+  // 組合每行文字，用合理的間距分隔
+  return lines.map(line=>{
+    line.sort((a,b)=>(a.transform?a.transform[4]:0)-(b.transform?b.transform[4]:0));
+    let result="";
+    let lastEndX=0;
+    line.forEach(item=>{
+      const x=item.transform?item.transform[4]:0;
+      const gap=x-lastEndX;
+      if(result&&gap>15)result+="\t"; // 大間距用tab
+      else if(result&&gap>5)result+=" "; // 小間距用空格
+      result+=item.str;
+      lastEndX=x+(item.width||item.str.length*6);
+    });
+    return result;
+  }).join("\n");
+}
+
+// 掃描PDF → OCR 辨識
+async function ocrPdfPages(){
+  if(pdfPageImages.length===0){showToast("無可辨識的頁面","error");return"";}
+  const lang=$("ocr-lang")?.value||"chi_tra+eng";
+  let allText="";
+
+  try{
+    const worker=await Tesseract.createWorker(lang,1,{
+      logger:m=>{
+        if(m.status==="recognizing text"){
+          const pct=65+Math.round((m.progress||0)*30);
+          $("ocr-bar").style.width=pct+"%";
+        }
+      }
+    });
+
+    for(let i=0;i<Math.min(pdfPageImages.length,10);i++){
+      $("ocr-status-text").textContent=`OCR 辨識第 ${i+1}/${Math.min(pdfPageImages.length,10)} 頁...`;
+      // 前處理增強
+      const processed=await preprocessImage(pdfPageImages[i],ocrMode);
+      const result=await worker.recognize(processed);
+      if(result.data.text.trim()){
+        allText+=(pdfPageImages.length>1?`\n===== 第 ${i+1} 頁 =====\n`:"")+result.data.text;
+      }
+    }
+    await worker.terminate();
+  }catch(e){
+    console.error("OCR失敗:",e);
+    showToast("OCR辨識失敗","error");
+  }
+  return allText;
+}
+
+// ─── 圖片 OCR 辨識 ──────────────────────────────────────────
+async function startImageOcr(){
+  const processed=$("ocr-image-processed")?.value;
+  const raw=$("ocr-image-data")?.value;
+  if(!raw){showToast("請先上傳圖片","error");return;}
+  const imageData=processed||raw;
   const lang=$("ocr-lang")?.value||"chi_tra+eng";
   $("ocr-progress").style.display="block";
   $("ocr-result").style.display="none";
   $("ocr-parsed").style.display="none";
   $("ocr-start-btn").disabled=true;
   $("ocr-start-btn").textContent="辨識中...";
+
   try{
     const worker=await Tesseract.createWorker(lang,1,{
       logger:m=>{
@@ -3006,78 +3343,326 @@ async function startOcr(){
         }
       }
     });
-    const {data:{text}}=await worker.recognize(imageData);
+    const result=await worker.recognize(imageData);
     await worker.terminate();
-    $("ocr-text").value=text;
+    $("ocr-text").value=result.data.text;
     $("ocr-result").style.display="block";
     $("ocr-status-text").textContent="✅ 辨識完成！";
     $("ocr-bar").style.width="100%";
-    showToast("辨識完成！請檢查結果後點擊解析匯入");
+    showToast("辨識完成，自動解析中...");
+    setTimeout(()=>parseDrawingToBom(),300);
   }catch(e){
     console.error("OCR失敗:",e);
     $("ocr-status-text").textContent="❌ 辨識失敗";
-    showToast("OCR辨識失敗，請重試","error");
+    showToast("辨識失敗，請重試","error");
   }
   $("ocr-start-btn").disabled=false;
-  $("ocr-start-btn").textContent="🔍 重新辨識";
+  $("ocr-start-btn").textContent="🔍 重新分析";
 }
-function parseOcrToBom(){
+
+// ─── 智慧圖面解析引擎 ──────────────────────────────────────
+const DRAW_MAT_KEYWORDS=["SS","SUS","SUS304","SUS316","SUS430","SPCC","SPHC","SGCC","SECC","AL","A6063","A5052","A6061","S45C","SCM","SCM440","SK","SS400","S50C","SM490","ASTM","AISI","JIS","EN","DIN","Q235","Q345",
+  "鋁","鋁板","鋁管","不鏽鋼","白鐵","鐵板","鍍鋅","銅","碳鋼","鋼板","板材","圓管","方管","角鐵","扁鐵","C型鋼","H型鋼","I型鋼","槽鋼","鍍鋅板","花紋板","力骨","補強板","蓋板","底板","側板","面板","背板","隔板","腳座","支架","把手","鉸鏈"];
+const DRAW_DIM_REGEX=/(\d+(?:\.\d+)?)\s*[×xX*]\s*(\d+(?:\.\d+)?)(?:\s*[×xX*]\s*(\d+(?:\.\d+)?))?/;
+const DRAW_THICK_REGEX=/[tT]\s*[=＝:：]?\s*(\d+(?:\.\d+)?)|(\d+(?:\.\d+)?)\s*[tT](?:\s|$|mm)/;
+const DRAW_DIA_REGEX=/[ΦφΦ⌀]\s*(\d+(?:\.\d+)?)/;
+const DRAW_QTY_REGEX=/(?:數量|QTY|qty|Qty|pcs|PCS|Pcs|組|個|片|支|入)[：:=\s]*(\d+)|(\d+)\s*(?:pcs|PCS|組|個|片|支|入)|[×xX]\s*(\d+)\s*$/;
+const DRAW_PN_REGEX=/(?:件號|PART\s*(?:NO|#)|P\/N|品號|圖號|ITEM|Item|No\.?)[：:.\s-]*([A-Za-z0-9\-_.]+)/i;
+
+function parseDrawingToBom(){
   const text=$("ocr-text")?.value||"";
   if(!text.trim()){showToast("無辨識文字","error");return;}
+
+  let parsed=[];
+
+  if(ocrMode==="titleblock"){
+    parsed=parseTitleBlock(text);
+  }else if(ocrMode==="table"){
+    parsed=parseTableBom(text);
+  }else{
+    // drawing mode: 全方位解析
+    parsed=parseDrawingContent(text);
+  }
+
+  // 去重（名稱+規格完全相同的合併數量）
+  const deduped=[];
+  parsed.forEach(item=>{
+    const exist=deduped.find(x=>x.name===item.name&&x.spec===item.spec&&x.material===item.material);
+    if(exist){exist.qty+=item.qty||1;}
+    else{deduped.push({...item});}
+  });
+
+  if(deduped.length===0){
+    showToast("無法解析項目，請嘗試手動編輯辨識文字或切換辨識模式","error");
+    return;
+  }
+
+  $("ocr-parsed").style.display="block";
+  $("ocr-parsed-list").innerHTML=`
+    <div style="overflow-x:auto"><table style="width:100%;font-size:12px;border-collapse:collapse">
+      <tr style="color:var(--muted);border-bottom:1px solid var(--border2)"><th style="padding:6px">#</th><th style="padding:6px;text-align:left">品名</th><th style="padding:6px">規格/尺寸</th><th style="padding:6px">數量</th><th style="padding:6px">材質</th><th style="padding:6px;text-align:left">備註</th><th style="padding:6px">刪</th></tr>
+      ${deduped.map((b,i)=>`<tr style="border-bottom:1px solid var(--border)" class="ocr-bom-row">
+        <td style="padding:6px">${i+1}</td>
+        <td style="padding:6px"><input class="inp ocr-b-name" value="${esc(b.name)}" style="font-size:11px"></td>
+        <td style="padding:6px"><input class="inp ocr-b-spec" value="${esc(b.spec)}" style="font-size:11px;width:90px"></td>
+        <td style="padding:6px"><input class="inp ocr-b-qty" type="number" value="${b.qty}" style="font-size:11px;width:50px;text-align:center"></td>
+        <td style="padding:6px"><input class="inp ocr-b-mat" value="${esc(b.material)}" style="font-size:11px;width:80px"></td>
+        <td style="padding:6px"><input class="inp ocr-b-note" value="${esc(b.note||"")}" style="font-size:11px"></td>
+        <td style="padding:6px;text-align:center"><button class="icon-btn" style="color:#EF4444" onclick="this.closest('tr').remove()">✕</button></td>
+      </tr>`).join("")}
+    </table></div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px">
+      <div style="font-size:12px;color:var(--muted)">共解析 ${deduped.length} 項，可直接在表格中修改</div>
+      <button class="icon-btn" style="color:#3B82F6;font-size:11px" onclick="addOcrParsedRow()">＋ 手動新增</button>
+    </div>`;
+  showToast(`成功解析 ${deduped.length} 項`);
+}
+
+function addOcrParsedRow(){
+  const table=document.querySelector("#ocr-parsed-list table");if(!table)return;
+  const lastRow=table.querySelector("tr:last-child");
+  const idx=table.querySelectorAll(".ocr-bom-row").length+1;
+  const tr=document.createElement("tr");tr.className="ocr-bom-row";tr.style.cssText="border-bottom:1px solid var(--border)";
+  tr.innerHTML=`<td style="padding:6px">${idx}</td>
+    <td style="padding:6px"><input class="inp ocr-b-name" value="" style="font-size:11px" placeholder="品名"></td>
+    <td style="padding:6px"><input class="inp ocr-b-spec" value="" style="font-size:11px;width:90px" placeholder="規格"></td>
+    <td style="padding:6px"><input class="inp ocr-b-qty" type="number" value="1" style="font-size:11px;width:50px;text-align:center"></td>
+    <td style="padding:6px"><input class="inp ocr-b-mat" value="" style="font-size:11px;width:80px" placeholder="材質"></td>
+    <td style="padding:6px"><input class="inp ocr-b-note" value="" style="font-size:11px" placeholder="備註"></td>
+    <td style="padding:6px;text-align:center"><button class="icon-btn" style="color:#EF4444" onclick="this.closest('tr').remove()">✕</button></td>`;
+  if(lastRow)lastRow.after(tr);else table.appendChild(tr);
+}
+
+// ─── 圖面內容解析（Drawing Mode）──────────────────────────
+function parseDrawingContent(text){
+  const lines=text.split("\n").map(l=>l.trim()).filter(l=>l.length>1);
+  const items=[];
+  // Pass1: 逐行擷取零件資訊
+  const skipPatterns=/^(SCALE|scale|比例|日期|DATE|REV|版次|DRAWN|CHECKED|APPROVED|審核|核准|繪圖|公差|TOLERANCE|MATERIAL|角法|ANGLE|PROJECTION|FINISH|SHEET|DO NOT|UNLESS|DIMENSIONS|ALL DIMS|GENERAL|NOTES|NOTE|注意|TITLE|DESCRIPTION|DWG|WEIGHT|重量|PAGE|頁|共|OF|第三角|投影)/i;
+  const headerPatterns=/^(序號|品名|名稱|項次|#|NO\.?|no\.?|ITEM|材質|數量|規格|單位|備註|QTY|PART|DESCRIPTION|MATERIAL|SIZE|UNIT|REMARK)/i;
+
+  lines.forEach(line=>{
+    if(skipPatterns.test(line))return;
+    if(headerPatterns.test(line)&&line.length<20)return;
+    if(line.length<2)return;
+
+    const item={name:"",spec:"",qty:1,material:"",note:""};
+
+    // 嘗試抓材質
+    let foundMat="";
+    DRAW_MAT_KEYWORDS.forEach(kw=>{
+      const kwUpper=kw.toUpperCase();
+      const lineUpper=line.toUpperCase();
+      if(lineUpper.includes(kwUpper)){
+        // 抓取完整材質描述
+        const idx=lineUpper.indexOf(kwUpper);
+        let matStr=line.substring(idx);
+        // 往後取到非材質字元為止
+        const matEnd=matStr.search(/[\s,，、;；\)）\]】]/);
+        if(matEnd>0)matStr=matStr.substring(0,matEnd);
+        if(matStr.length>foundMat.length)foundMat=matStr;
+      }
+    });
+    item.material=foundMat;
+
+    // 嘗試抓尺寸規格
+    const dimMatch=line.match(DRAW_DIM_REGEX);
+    const thickMatch=line.match(DRAW_THICK_REGEX);
+    const diaMatch=line.match(DRAW_DIA_REGEX);
+    let specs=[];
+    if(dimMatch){
+      specs.push(dimMatch[3]?`${dimMatch[1]}×${dimMatch[2]}×${dimMatch[3]}`:`${dimMatch[1]}×${dimMatch[2]}`);
+    }
+    if(thickMatch){
+      const tv=thickMatch[1]||thickMatch[2];
+      if(!dimMatch||!dimMatch[0].includes(tv))specs.push("t="+tv);
+    }
+    if(diaMatch)specs.push("Φ"+diaMatch[1]);
+    item.spec=specs.join(" ");
+
+    // 嘗試抓數量
+    const qtyMatch=line.match(DRAW_QTY_REGEX);
+    if(qtyMatch)item.qty=parseInt(qtyMatch[1]||qtyMatch[2]||qtyMatch[3])||1;
+
+    // 嘗試抓件號/品名
+    const pnMatch=line.match(DRAW_PN_REGEX);
+    if(pnMatch){
+      item.note="件號:"+pnMatch[1];
+    }
+
+    // 清理後的文字作為品名
+    let cleanLine=line;
+    // 移除已擷取的部分
+    if(dimMatch)cleanLine=cleanLine.replace(dimMatch[0],"");
+    if(thickMatch)cleanLine=cleanLine.replace(thickMatch[0],"");
+    if(diaMatch)cleanLine=cleanLine.replace(diaMatch[0],"");
+    if(qtyMatch)cleanLine=cleanLine.replace(qtyMatch[0],"");
+    if(foundMat)cleanLine=cleanLine.replace(foundMat,"");
+    if(pnMatch)cleanLine=cleanLine.replace(pnMatch[0],"");
+    // 移除純數字序號
+    cleanLine=cleanLine.replace(/^\d+[\.\)\]\s]+/,"");
+    // 移除多餘符號
+    cleanLine=cleanLine.replace(/[：:=＝\-—\|│,，、;；\(\)（）\[\]【】\{\}]/g," ").replace(/\s+/g," ").trim();
+
+    // 判斷是否有意義
+    if(cleanLine.length>=1){
+      item.name=cleanLine;
+    }else if(item.spec||item.material){
+      item.name=item.material||item.spec||"未命名零件";
+    }
+
+    // 只有有品名或有規格+材質才加入
+    if(item.name&&(item.name.length>=1||item.spec||item.material)){
+      items.push(item);
+    }
+  });
+
+  // Pass2: 嘗試表格式解析（如果有明顯的表格結構）
+  const tableItems=parseTableBom(text);
+  if(tableItems.length>items.length)return tableItems;
+
+  return items;
+}
+
+// ─── 標題欄擷取 ──────────────────────────────────────────
+function parseTitleBlock(text){
+  const lines=text.split("\n").map(l=>l.trim()).filter(l=>l);
+  const info={name:"",partNo:"",material:"",scale:"",rev:"",customer:"",weight:"",note:""};
+
+  lines.forEach(line=>{
+    const lower=line.toLowerCase();
+    // 圖號
+    if(/(?:圖號|DWG|DRAWING|D\/N|PART\s*NO|P\/N)/i.test(line)){
+      const v=line.replace(/.*(?:圖號|DWG|DRAWING|D\/N|PART\s*NO|P\/N)[：:.\s\-]*/i,"").trim();
+      if(v)info.partNo=v;
+    }
+    // 品名/名稱
+    else if(/(?:品名|名稱|TITLE|NAME|DESCRIPTION|DESC)/i.test(line)){
+      const v=line.replace(/.*(?:品名|名稱|TITLE|NAME|DESCRIPTION|DESC)[：:.\s\-]*/i,"").trim();
+      if(v)info.name=v;
+    }
+    // 材質
+    else if(/(?:材質|MATERIAL|MAT'?L|材料)/i.test(line)){
+      const v=line.replace(/.*(?:材質|MATERIAL|MAT'?L|材料)[：:.\s\-]*/i,"").trim();
+      if(v)info.material=v;
+    }
+    // 比例
+    else if(/(?:比例|SCALE)/i.test(line)){
+      const v=line.replace(/.*(?:比例|SCALE)[：:.\s\-]*/i,"").trim();
+      if(v)info.scale=v;
+    }
+    // 版次
+    else if(/(?:版次|REV|REVISION|版本)/i.test(line)){
+      const v=line.replace(/.*(?:版次|REV|REVISION|版本)[：:.\s\-]*/i,"").trim();
+      if(v)info.rev=v;
+    }
+    // 重量
+    else if(/(?:重量|WEIGHT|WT)/i.test(line)){
+      const v=line.replace(/.*(?:重量|WEIGHT|WT)[：:.\s\-]*/i,"").trim();
+      if(v)info.weight=v;
+    }
+    // 客戶
+    else if(/(?:客戶|CUSTOMER|CLIENT)/i.test(line)){
+      const v=line.replace(/.*(?:客戶|CUSTOMER|CLIENT)[：:.\s\-]*/i,"").trim();
+      if(v)info.customer=v;
+    }
+    // 用材質關鍵字做 fallback
+    else{
+      DRAW_MAT_KEYWORDS.forEach(kw=>{
+        if(line.toUpperCase().includes(kw.toUpperCase())&&!info.material){
+          info.material=line.trim();
+        }
+      });
+    }
+  });
+
+  if(!info.name&&!info.partNo)return [];
+  const item={
+    name:info.name||info.partNo||"標題欄零件",
+    spec:"",
+    qty:1,
+    material:info.material,
+    note:[info.partNo?"圖號:"+info.partNo:"",info.rev?"版次:"+info.rev:"",info.scale?"比例:"+info.scale:"",info.weight?"重量:"+info.weight:"",info.customer?"客戶:"+info.customer:""].filter(x=>x).join(" | ")
+  };
+  return [item];
+}
+
+// ─── BOM表格辨識 ──────────────────────────────────────────
+function parseTableBom(text){
   const lines=text.split("\n").map(l=>l.trim()).filter(l=>l.length>1);
   const parsed=[];
-  const numRegex=/\d+/;
-  const matKeywords=["SS","SUS","SPCC","SPHC","AL","鋁","不鏽鋼","鐵板","鍍鋅","銅","碳鋼","S45C","SCM","SK","鋼板","板材","圓管","方管","角鐵","扁鐵","C型鋼","H型鋼","白鐵"];
-  lines.forEach(line=>{
-    // skip header-like lines
-    if(/^(序號|品名|名稱|項次|#|NO|no\.|item|ITEM|材質|數量|規格|單位|備註)/i.test(line))return;
-    if(line.length<2)return;
-    // try to parse tabular data (tab, multiple spaces, or | separated)
+
+  // 偵測表頭行以決定欄位順序
+  let colMap=null;
+  const headerKeywords={
+    name:/品名|名稱|DESCRIPTION|DESC|PART\s*NAME|零件名|Part\s*Name/i,
+    material:/材質|MATERIAL|MAT'?L|材料/i,
+    spec:/規格|尺寸|SIZE|SPEC|DIMENSION|DIM/i,
+    qty:/數量|QTY|QUANTITY|PCS|入數|需求/i,
+    unit:/單位|UNIT/i,
+    note:/備註|REMARK|NOTE|說明/i,
+    partNo:/件號|序號|ITEM|NO\.?|#|編號|PART\s*NO/i
+  };
+
+  lines.forEach((line,lineIdx)=>{
+    // 分割
     let parts=line.split(/\t|\|/).map(s=>s.trim()).filter(s=>s);
     if(parts.length<2)parts=line.split(/\s{2,}/).map(s=>s.trim()).filter(s=>s);
-    if(parts.length>=2){
-      const item={name:"",spec:"",qty:1,material:"",note:""};
-      // first non-number part is likely the name
+    if(parts.length<2)parts=line.split(/\s+/).map(s=>s.trim()).filter(s=>s);
+
+    // 檢查是否為表頭
+    if(!colMap){
+      let headerHits=0;
+      const testMap={};
+      parts.forEach((p,ci)=>{
+        for(const[key,regex]of Object.entries(headerKeywords)){
+          if(regex.test(p)&&!testMap[key]){testMap[key]=ci;headerHits++;break;}
+        }
+      });
+      if(headerHits>=2){
+        colMap=testMap;
+        return; // 跳過表頭行
+      }
+    }
+
+    if(parts.length<2)return;
+    // 跳過明顯的表頭或說明行
+    if(/^(序號|品名|名稱|項次|#|NO|ITEM|材質|數量|規格|單位|備註)/i.test(line)&&line.length<30)return;
+
+    const item={name:"",spec:"",qty:1,material:"",note:""};
+
+    if(colMap){
+      // 依偵測到的欄位順序取值
+      if(colMap.name!==undefined)item.name=parts[colMap.name]||"";
+      if(colMap.material!==undefined)item.material=parts[colMap.material]||"";
+      if(colMap.spec!==undefined)item.spec=parts[colMap.spec]||"";
+      if(colMap.qty!==undefined)item.qty=parseInt(parts[colMap.qty])||1;
+      if(colMap.unit!==undefined)item.unit=parts[colMap.unit]||"件";
+      if(colMap.note!==undefined)item.note=parts[colMap.note]||"";
+      if(!item.name&&colMap.partNo!==undefined)item.name=parts[colMap.partNo]||"";
+    }else{
+      // 無表頭，智慧猜測
       let qtyFound=false;
       parts.forEach((part,pi)=>{
         const isNum=/^\d+$/.test(part);
-        const hasMat=matKeywords.some(k=>part.toUpperCase().includes(k.toUpperCase()));
-        if(isNum&&!qtyFound&&pi>0){item.qty=parseInt(part);qtyFound=true;}
+        const hasMat=DRAW_MAT_KEYWORDS.some(k=>part.toUpperCase().includes(k.toUpperCase()));
+        const hasDim=DRAW_DIM_REGEX.test(part)||DRAW_THICK_REGEX.test(part)||DRAW_DIA_REGEX.test(part);
+        if(isNum&&!qtyFound&&pi>0&&parseInt(part)<9999){item.qty=parseInt(part);qtyFound=true;}
         else if(hasMat&&!item.material){item.material=part;}
+        else if(hasDim&&!item.spec){item.spec=part;}
         else if(!item.name){item.name=part;}
         else if(!item.spec&&part.match(/[\d×xX*\-\.]+/)){item.spec=part;}
         else{item.note+=(item.note?" ":"")+part;}
       });
-      if(item.name)parsed.push(item);
-    }else if(line.length>2){
-      // single column - treat entire line as item name, try extract qty
-      const qMatch=line.match(/[×xX*]\s*(\d+)/);
-      const qty=qMatch?parseInt(qMatch[1]):1;
-      const name=line.replace(/[×xX*]\s*\d+/,"").trim();
-      if(name)parsed.push({name,spec:"",qty,material:"",note:""});
     }
+    // 移除名稱中的純數字序號
+    item.name=item.name.replace(/^\d+[\.\)\]]\s*/,"").trim();
+    if(item.name)parsed.push(item);
   });
-  if(parsed.length===0){
-    showToast("無法解析BOM項目，請手動編輯辨識文字後重試","error");
-    return;
-  }
-  $("ocr-parsed").style.display="block";
-  $("ocr-parsed-list").innerHTML=`
-    <div style="overflow-x:auto"><table style="width:100%;font-size:12px;border-collapse:collapse">
-      <tr style="color:var(--muted);border-bottom:1px solid var(--border2)"><th style="padding:6px">#</th><th style="padding:6px;text-align:left">品名</th><th style="padding:6px">規格</th><th style="padding:6px">數量</th><th style="padding:6px">材質</th><th style="padding:6px;text-align:left">備註</th><th style="padding:6px">移除</th></tr>
-      ${parsed.map((b,i)=>`<tr style="border-bottom:1px solid var(--border)" class="ocr-bom-row">
-        <td style="padding:6px">${i+1}</td>
-        <td style="padding:6px"><input class="inp ocr-b-name" value="${esc(b.name)}" style="font-size:11px"></td>
-        <td style="padding:6px"><input class="inp ocr-b-spec" value="${esc(b.spec)}" style="font-size:11px;width:80px"></td>
-        <td style="padding:6px"><input class="inp ocr-b-qty" type="number" value="${b.qty}" style="font-size:11px;width:50px;text-align:center"></td>
-        <td style="padding:6px"><input class="inp ocr-b-mat" value="${esc(b.material)}" style="font-size:11px;width:70px"></td>
-        <td style="padding:6px"><input class="inp ocr-b-note" value="${esc(b.note)}" style="font-size:11px"></td>
-        <td style="padding:6px;text-align:center"><button class="icon-btn" style="color:#EF4444" onclick="this.closest('tr').remove()">✕</button></td>
-      </tr>`).join("")}
-    </table></div>
-    <div style="font-size:12px;color:var(--muted);margin-top:8px">共解析 ${parsed.length} 項，請確認後匯入。可直接在表格中修改。</div>`;
-  showToast(`成功解析 ${parsed.length} 項 BOM`);
+
+  return parsed;
 }
+
 async function confirmOcrImport(){
   const projectId=$("ocr-project")?.value||ocrTargetProject;
   if(!projectId){showToast("請選擇匯入的案件","error");return;}
