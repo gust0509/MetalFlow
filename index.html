@@ -4,9 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="MetalFlow">
-<meta name="theme-color" content="#060C1A">
+<meta name="theme-color" content="#FFFFFF">
 <title>MetalFlow PRO</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
@@ -19,15 +19,15 @@
 <style>
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 :root{
-  --bg:#060C1A;--surface:#0A1020;--border:#111827;--border2:#1E293B;
-  --text:#E2E8F0;--muted:#64748B;--dim:#334155;
+  --bg:#F8FAFC;--surface:#FFFFFF;--border:#E2E8F0;--border2:#CBD5E1;
+  --text:#1E293B;--muted:#64748B;--dim:#94A3B8;
   --blue:#3B82F6;--purple:#8B5CF6;--green:#10B981;--yellow:#F59E0B;--red:#EF4444;
   --line:#06C755;
   font-size:14px;
 }
 body{background:var(--bg);color:var(--text);font-family:'DM Sans','Noto Sans TC',sans-serif;height:100dvh;overflow:hidden;display:flex;flex-direction:column}
 ::-webkit-scrollbar{width:3px;height:3px}
-::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px}
+::-webkit-scrollbar-thumb{background:#CBD5E1;border-radius:2px}
 /* TOPBAR */
 #topbar{display:flex;align-items:center;gap:10px;padding:12px 14px;background:var(--surface);border-bottom:1px solid var(--border);flex-shrink:0;padding-top:max(12px,env(safe-area-inset-top))}
 #ham-btn{font-size:20px;background:none;border:none;color:var(--muted);cursor:pointer;padding:4px 6px}
@@ -43,7 +43,7 @@ body{background:var(--bg);color:var(--text);font-family:'DM Sans','Noto Sans TC'
 .logo-sub{font-size:10px;color:var(--dim);margin-top:2px;letter-spacing:.5px}
 .side-nav{flex:1;padding:6px 12px;overflow-y:auto}
 .nav-item{display:flex;align-items:center;gap:10px;width:100%;padding:11px 12px;border-radius:10px;border:none;background:transparent;color:var(--muted);font-size:13px;font-weight:500;cursor:pointer;transition:all .18s;margin-bottom:2px;text-align:left;font-family:inherit;position:relative}
-.nav-item.active{background:#0F2344;color:#60A5FA;font-weight:700}
+.nav-item.active{background:#DBEAFE;color:#2563EB;font-weight:700}
 .nav-ico{font-size:16px;width:20px;text-align:center}
 .nav-badge{margin-left:auto;background:var(--red);color:#fff;border-radius:10px;padding:1px 7px;font-size:10px;font-weight:800}
 .side-footer{padding:14px 18px;border-top:1px solid var(--border)}
@@ -59,11 +59,11 @@ body{background:var(--bg);color:var(--text);font-family:'DM Sans','Noto Sans TC'
 /* BOTTOM NAV */
 #bottom-nav{display:flex;background:var(--surface);border-top:1px solid var(--border);flex-shrink:0;padding-bottom:env(safe-area-inset-bottom,4px)}
 .bot-btn{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;padding:9px 4px 7px;border:none;background:transparent;color:var(--dim);cursor:pointer;font-family:inherit;font-size:9px;position:relative}
-.bot-btn.active{color:#60A5FA}
+.bot-btn.active{color:#2563EB}
 .bot-ico{font-size:18px}
 .bot-dot{position:absolute;top:6px;right:calc(50% - 14px);width:6px;height:6px;border-radius:50%;background:var(--line)}
 /* CARDS */
-.card{background:var(--surface);border-radius:14px;padding:16px;margin-bottom:12px;border:1px solid var(--border)}
+.card{background:var(--surface);border-radius:14px;padding:16px;margin-bottom:12px;border:1px solid var(--border);box-shadow:0 1px 3px rgba(0,0,0,.06)}
 .card-title{font-size:12px;font-weight:700;color:#94A3B8;text-transform:uppercase;letter-spacing:.7px;margin-bottom:12px;font-family:'Syne',sans-serif}
 /* KPI GRID */
 .kpi-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:12px}
@@ -72,23 +72,23 @@ body{background:var(--bg);color:var(--text);font-family:'DM Sans','Noto Sans TC'
 .kpi-val{font-size:26px;font-weight:800;font-family:'Syne',sans-serif;line-height:1}
 .kpi-sub{font-size:11px;color:var(--dim);margin-top:5px}
 /* TAGS & PILLS */
-.wo-tag{background:#0F2344;color:#60A5FA;border-radius:6px;padding:2px 8px;font-size:11px;font-weight:700;font-family:monospace}
+.wo-tag{background:#DBEAFE;color:#2563EB;border-radius:6px;padding:2px 8px;font-size:11px;font-weight:700;font-family:monospace}
 .pill{border-radius:20px;padding:2px 9px;font-size:11px;font-weight:700;display:inline-block}
 /* PROGRESS BAR */
-.bar-bg{background:#0F172A;border-radius:4px;height:6px;overflow:hidden}
+.bar-bg{background:#F1F5F9;border-radius:4px;height:6px;overflow:hidden}
 .bar-fill{height:6px;border-radius:4px;transition:width .6s}
 /* BUTTONS */
 .accent-btn{background:linear-gradient(135deg,#2563EB,#7C3AED);color:#fff;border:none;border-radius:10px;padding:9px 16px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit}
 .icon-btn{background:var(--border2);border:1px solid var(--dim);border-radius:8px;padding:7px 10px;color:#94A3B8;cursor:pointer;font-size:13px;font-family:inherit}
-.adv-btn{background:#172554;border:none;border-radius:8px;padding:6px 10px;color:#60A5FA;cursor:pointer;font-size:12px;font-weight:600;font-family:inherit;white-space:nowrap}
+.adv-btn{background:#DBEAFE;border:none;border-radius:8px;padding:6px 10px;color:#2563EB;cursor:pointer;font-size:12px;font-weight:600;font-family:inherit;white-space:nowrap}
 .link-btn{background:none;border:none;color:var(--blue);font-size:12px;cursor:pointer;padding:0;font-family:inherit}
 .chip{background:var(--border2);border:1px solid var(--dim);border-radius:20px;padding:5px 12px;color:var(--muted);font-size:12px;cursor:pointer;white-space:nowrap;flex-shrink:0;font-family:inherit}
-.chip.on{background:#0F2344;border-color:var(--blue);color:#60A5FA}
+.chip.on{background:#DBEAFE;border-color:var(--blue);color:#2563EB}
 /* FORM */
 .form-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:10px}
 .form-field{margin-bottom:10px}
 label.lbl{display:block;font-size:11px;color:var(--muted);margin-bottom:5px;font-weight:700;letter-spacing:.4px}
-input.inp,select.inp,textarea.inp{width:100%;background:#060C1A;border:1px solid var(--border2);border-radius:8px;padding:10px 12px;color:var(--text);font-size:13px;outline:none;font-family:inherit}
+input.inp,select.inp,textarea.inp{width:100%;background:#F8FAFC;border:1px solid var(--border2);border-radius:8px;padding:10px 12px;color:var(--text);font-size:13px;outline:none;font-family:inherit}
 /* MODAL */
 #modal-wrap{position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:2000;display:none;align-items:flex-end;justify-content:center}
 #modal-wrap.show{display:flex}
@@ -107,7 +107,7 @@ input.inp,select.inp,textarea.inp{width:100%;background:#060C1A;border:1px solid
 .line-ava{width:32px;height:32px;border-radius:50%;background:var(--line);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:800;color:#fff;flex-shrink:0}
 /* CHART BAR */
 .chart-bar-wrap{margin-bottom:12px}
-.chart-bar-bg{background:#0F172A;border-radius:4px;height:10px;overflow:hidden;margin-top:4px}
+.chart-bar-bg{background:#F1F5F9;border-radius:4px;height:10px;overflow:hidden;margin-top:4px}
 .chart-bar-fill{height:10px;border-radius:4px;transition:width 1s cubic-bezier(.4,0,.2,1)}
 /* KANBAN */
 .kanban-wrap{display:flex;gap:10px;overflow-x:auto;padding-bottom:16px;min-height:360px}
@@ -141,18 +141,18 @@ input.inp,select.inp,textarea.inp{width:100%;background:#060C1A;border:1px solid
 .bn-lbl{font-size:8px;color:var(--muted);text-align:center;width:44px;line-height:1.2}
 /* LOGIN SCREEN */
 #login-wrap{position:fixed;inset:0;background:var(--bg);display:flex;align-items:center;justify-content:center;z-index:3000;flex-direction:column;padding:20px}
-.login-card{background:var(--surface);border:1px solid var(--border);border-radius:20px;padding:40px 24px;max-width:400px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.8)}
+.login-card{background:var(--surface);border:1px solid var(--border);border-radius:20px;padding:40px 24px;max-width:400px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.15)}
 .login-logo{text-align:center;font-size:48px;margin-bottom:12px}
 .login-title{text-align:center;font-size:24px;font-weight:800;font-family:'Syne',sans-serif;margin-bottom:8px}
 .login-sub{text-align:center;font-size:12px;color:var(--muted);margin-bottom:28px}
 .login-form{display:flex;flex-direction:column;gap:14px}
-.login-input{background:#060C1A;border:1px solid var(--border2);border-radius:10px;padding:12px 14px;color:var(--text);font-size:13px;outline:none;font-family:inherit}
+.login-input{background:#F8FAFC;border:1px solid var(--border2);border-radius:10px;padding:12px 14px;color:var(--text);font-size:13px;outline:none;font-family:inherit}
 .login-input::placeholder{color:var(--dim)}
 .login-input:focus{border-color:var(--blue)}
 .login-btn{background:linear-gradient(135deg,#2563EB,#7C3AED);color:#fff;border:none;border-radius:10px;padding:12px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;transition:opacity .2s}
 .login-btn:hover{opacity:.9}
 .login-btn:disabled{opacity:.5;cursor:not-allowed}
-.login-err{background:#7F1D1D;color:#FCA5A5;border:1px solid #7F1D1D;border-radius:10px;padding:10px;font-size:12px;margin-bottom:10px;display:none}
+.login-err{background:#FECACA;color:#DC2626;border:1px solid #FECACA;border-radius:10px;padding:10px;font-size:12px;margin-bottom:10px;display:none}
 .login-help{text-align:center;font-size:11px;color:var(--muted);margin-top:20px}
 .login-toggle{background:none;border:none;color:var(--blue);cursor:pointer;font-weight:600;text-decoration:underline}
 </style>
@@ -910,7 +910,7 @@ function renderDashboard(){
           <div style="font-size:11px;color:var(--muted);margin-top:3px">${s?.icon} ${s?.label} · ${esc(o.part)}</div>
         </div>
         <div style="display:flex;gap:6px;align-items:center;flex-shrink:0">
-          <span class="pill" style="background:${d<0?"#7F1D1D":d<3?"#78350F":"#14532D"};color:${d<0?"#FCA5A5":d<3?"#FDE68A":"#86EFAC"};font-size:11px">${d<0?`逾期${-d}天`:`剩${d}天`}</span>
+          <span class="pill" style="background:${d<0?"#FECACA":d<3?"#D97706":"#D1FAE5"};color:${d<0?"#DC2626":d<3?"#D97706":"#059669"};font-size:11px">${d<0?`逾期${-d}天`:`剩${d}天`}</span>
           <button class="adv-btn" onclick="advanceOrder('${o.id}')">▶ +📱</button>
         </div>
       </div>`;
@@ -957,8 +957,8 @@ function renderOrders(){
 }
 function renderOrderCard(o,i){
   const si=stgIdx(o.stage), s=stg(o.stage), pct=Math.round(si/(STAGES.length-1)*100), d=daysLeft(o.deadline);
-  const pc=o.priority==="高"?"#7F1D1D":o.priority==="中"?"#451A03":"#1C1917";
-  const ptc=o.priority==="高"?"#FCA5A5":o.priority==="中"?"#FDE68A":"#A8A29E";
+  const pc=o.priority==="高"?"#FECACA":o.priority==="中"?"#FEF3C7":"#1C1917";
+  const ptc=o.priority==="高"?"#DC2626":o.priority==="中"?"#D97706":"#A8A29E";
   return `<div class="card slide-up" style="border-left:3px solid ${s.color};animation-delay:${i*0.04}s">
     <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:8px">
       <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
@@ -1050,7 +1050,7 @@ function renderQuotes(){
       </div>
     </div>
     <div class="form-field"><label class="lbl">備註</label><input class="inp" value="${esc(f.note)}" oninput="state.newQuoteForm.note=this.value"></div>
-    ${est>0?`<div style="background:#0F172A;border-radius:8px;padding:10px 14px;margin-bottom:12px;display:flex;justify-content:space-between"><span style="font-size:13px;color:var(--muted)">預估總金額</span><span style="color:#10B981;font-weight:800;font-size:18px;font-family:'Syne',sans-serif">NT$ ${est.toLocaleString()}</span></div>`:""}
+    ${est>0?`<div style="background:#F1F5F9;border-radius:8px;padding:10px 14px;margin-bottom:12px;display:flex;justify-content:space-between"><span style="font-size:13px;color:var(--muted)">預估總金額</span><span style="color:#10B981;font-weight:800;font-size:18px;font-family:'Syne',sans-serif">NT$ ${est.toLocaleString()}</span></div>`:""}
     <button class="accent-btn" style="width:100%;padding:12px" onclick="submitQuote()">建立報價單 + 發送LINE通知 📱</button>
   </div>`:""}
   ${state.quotes.map((q,i)=>`<div class="card slide-up" style="animation-delay:${i*0.04}s">
@@ -1058,7 +1058,7 @@ function renderQuotes(){
       <div>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
           <span class="wo-tag">${q.id}</span>
-          <span class="pill" style="background:${q.status==="已接單"?"#14532D":q.status==="待確認"?"#451A03":"#1e3a5f"};color:${q.status==="已接單"?"#86EFAC":q.status==="待確認"?"#FDE68A":"#93C5FD"};font-size:11px">${q.status}</span>
+          <span class="pill" style="background:${q.status==="已接單"?"#D1FAE5":q.status==="待確認"?"#FEF3C7":"#1e3a5f"};color:${q.status==="已接單"?"#059669":q.status==="待確認"?"#D97706":"#2563EB"};font-size:11px">${q.status}</span>
         </div>
         <div style="font-size:15px;font-weight:700;margin-top:8px;font-family:'Syne',sans-serif">${esc(q.customer)}</div>
         <div style="font-size:12px;color:var(--muted)">${esc(q.part)} × ${q.qty} ｜ ${esc(q.material)}</div>
@@ -1068,7 +1068,7 @@ function renderQuotes(){
         <div style="font-size:11px;color:var(--muted)">${(+q.unitPrice).toLocaleString()}/件 · ${q.validDays}天</div>
       </div>
     </div>
-    ${(q.process||[]).length>0?`<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:10px">${q.process.map(p=>`<span class="pill" style="background:#172554;color:#93C5FD;font-size:10px">${p}</span>`).join("")}</div>`:""}
+    ${(q.process||[]).length>0?`<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:10px">${q.process.map(p=>`<span class="pill" style="background:#DBEAFE;color:#2563EB;font-size:10px">${p}</span>`).join("")}</div>`:""}
     <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
       <button class="icon-btn" style="color:#EF4444" onclick="exportPDF('${q.id}')">📄 匯出PDF</button>
       <button class="icon-btn" style="color:#06C755" onclick="resendLine('${q.id}')">📱 重發LINE</button>
@@ -1154,8 +1154,8 @@ function openViewServiceModal(id){
   $("modal-box").innerHTML=`
     <div class="modal-head"><div class="modal-title">🔧 售服回報 ${r.id}</div><button class="close-btn" onclick="closeModal()">✕</button></div>
     ${[["回報編號",r.id],["客戶",r.customer],["關聯工單",r.orderId||"—"],["品名",r.part||"—"],["類型",r.type],["狀態",r.status],["建立時間",ds],["聯絡人",r.contact||"—"]].map(([k,v])=>`<div class="detail-row"><span class="detail-key">${k}</span><span class="detail-val">${esc(v)}</span></div>`).join("")}
-    <div style="margin-top:12px"><div class="lbl">問題描述</div><div style="background:#0F172A;border-radius:8px;padding:10px;font-size:13px;color:var(--text);margin-top:4px">${esc(r.description||"—")}</div></div>
-    ${r.resolution?`<div style="margin-top:10px"><div class="lbl">處理結果</div><div style="background:#14532D33;border-radius:8px;padding:10px;font-size:13px;color:#86EFAC;margin-top:4px">${esc(r.resolution)}</div></div>`:""}
+    <div style="margin-top:12px"><div class="lbl">問題描述</div><div style="background:#F1F5F9;border-radius:8px;padding:10px;font-size:13px;color:var(--text);margin-top:4px">${esc(r.description||"—")}</div></div>
+    ${r.resolution?`<div style="margin-top:10px"><div class="lbl">處理結果</div><div style="background:#D1FAE533;border-radius:8px;padding:10px;font-size:13px;color:#059669;margin-top:4px">${esc(r.resolution)}</div></div>`:""}
     ${renderPhotos(r.photos)}
     <button class="icon-btn" style="width:100%;padding:10px;margin-top:14px;text-align:center" onclick="closeModal()">關閉</button>`;
   $("modal-wrap").classList.add("show");
@@ -1184,7 +1184,7 @@ function openEditServiceModal(id){
       <button class="accent-btn" style="flex:1;padding:11px" onclick="submitEditService('${r.id}')">💾 儲存</button>
       <button class="icon-btn" style="flex:1;padding:11px;text-align:center" onclick="closeModal()">取消</button>
     </div>
-    ${currentUserRole==="admin"?`<button style="background:#7F1D1D;color:#FCA5A5;border:1px solid #991B1B;border-radius:10px;padding:10px;width:100%;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;margin-top:10px" onclick="deleteService('${r.id}')">🗑️ 刪除</button>`:""}`;
+    ${currentUserRole==="admin"?`<button style="background:#FECACA;color:#DC2626;border:1px solid #991B1B;border-radius:10px;padding:10px;width:100%;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;margin-top:10px" onclick="deleteService('${r.id}')">🗑️ 刪除</button>`:""}`;
   $("modal-wrap").classList.add("show");
   setTimeout(()=>{
     if(r.photos&&r.photos.length){
@@ -1319,7 +1319,7 @@ function openViewReceiptModal(id){
     <div class="modal-head"><div class="modal-title">📋 簽收單 ${r.id}</div><button class="close-btn" onclick="closeModal()">✕</button></div>
     <div style="text-align:center;margin-bottom:14px"><span class="pill" style="background:${sc}22;color:${sc};font-size:14px;padding:6px 16px">${r.status}</span></div>
     ${[["簽收單號",r.id],["客戶",r.customer],["關聯工單",r.orderId||"—"],["品名",r.part||"—"],["數量",r.qty?`${r.qty} 件`:"—"],["金額",r.amount?`NT$ ${Number(r.amount).toLocaleString()}`:"—"],["簽收方式",r.type||"—"],["收件人",r.receiver||"—"],["聯絡電話",r.phone||"—"],["建立時間",ds],["簽收時間",sds],["收款狀態",r.paymentStatus||"未收款"]].map(([k,v])=>`<div class="detail-row"><span class="detail-key">${k}</span><span class="detail-val">${esc(v)}</span></div>`).join("")}
-    ${r.note?`<div style="margin-top:10px"><div class="lbl">備註</div><div style="background:#0F172A;border-radius:8px;padding:10px;font-size:13px;color:var(--text);margin-top:4px">${esc(r.note)}</div></div>`:""}
+    ${r.note?`<div style="margin-top:10px"><div class="lbl">備註</div><div style="background:#F1F5F9;border-radius:8px;padding:10px;font-size:13px;color:var(--text);margin-top:4px">${esc(r.note)}</div></div>`:""}
     ${renderPhotos(r.photos)}
     <button class="icon-btn" style="width:100%;padding:10px;margin-top:14px;text-align:center" onclick="closeModal()">關閉</button>`;
   $("modal-wrap").classList.add("show");
@@ -1352,7 +1352,7 @@ function openEditReceiptModal(id){
       <button class="accent-btn" style="flex:1;padding:11px" onclick="submitEditReceipt('${r.id}')">💾 儲存</button>
       <button class="icon-btn" style="flex:1;padding:11px;text-align:center" onclick="closeModal()">取消</button>
     </div>
-    ${currentUserRole==="admin"?`<button style="background:#7F1D1D;color:#FCA5A5;border:1px solid #991B1B;border-radius:10px;padding:10px;width:100%;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;margin-top:10px" onclick="deleteReceipt('${r.id}')">🗑️ 刪除</button>`:""}`;
+    ${currentUserRole==="admin"?`<button style="background:#FECACA;color:#DC2626;border:1px solid #991B1B;border-radius:10px;padding:10px;width:100%;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;margin-top:10px" onclick="deleteReceipt('${r.id}')">🗑️ 刪除</button>`:""}`;
   $("modal-wrap").classList.add("show");
   setTimeout(()=>{
     if(r.photos&&r.photos.length){
@@ -1516,7 +1516,7 @@ function renderReceivable(){
           <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
             <span class="wo-tag">${r.id}</span>
             <span style="font-size:13px;font-weight:600">${esc(r.customer)}</span>
-            ${urgent?'<span class="pill" style="background:#7F1D1D;color:#FCA5A5;font-size:10px">逾期'+days+'天</span>':""}
+            ${urgent?'<span class="pill" style="background:#FECACA;color:#DC2626;font-size:10px">逾期'+days+'天</span>':""}
             <span class="pill" style="background:${PAY_STATUS_COLORS[r.paymentStatus]||"#F59E0B"}22;color:${PAY_STATUS_COLORS[r.paymentStatus]||"#F59E0B"};font-size:10px">${r.paymentStatus||"未收款"}</span>
           </div>
           <div style="font-size:11px;color:var(--muted);margin-top:3px">${esc(r.part||"")} · 工單:${esc(r.orderId||"—")}</div>
@@ -1703,7 +1703,7 @@ function openViewInvoiceModal(id){
   $("modal-box").innerHTML=`
     <div class="modal-head"><div class="modal-title">🧾 發票 ${inv.id}</div><button class="close-btn" onclick="closeModal()">✕</button></div>
     ${[["發票編號",inv.id],["發票號碼",inv.invoiceNo||"—"],["客戶/供應商",inv.customer],["方向",inv.direction],["金額","NT$ "+Number(inv.amount||0).toLocaleString()],["稅額","NT$ "+Number(inv.tax||0).toLocaleString()],["含稅合計","NT$ "+Number((inv.amount||0)+(inv.tax||0)).toLocaleString()],["狀態",inv.status],["發票日期",inv.invoiceDate||"—"],["關聯單號",inv.ref||"—"],["建立時間",ds]].map(([k,v])=>`<div class="detail-row"><span class="detail-key">${k}</span><span class="detail-val">${esc(String(v))}</span></div>`).join("")}
-    ${inv.description?`<div style="margin-top:10px"><div class="lbl">說明</div><div style="background:#0F172A;border-radius:8px;padding:10px;font-size:13px;color:var(--text);margin-top:4px">${esc(inv.description)}</div></div>`:""}
+    ${inv.description?`<div style="margin-top:10px"><div class="lbl">說明</div><div style="background:#F1F5F9;border-radius:8px;padding:10px;font-size:13px;color:var(--text);margin-top:4px">${esc(inv.description)}</div></div>`:""}
     ${renderPhotos(inv.photos)}
     <button class="icon-btn" style="width:100%;padding:10px;margin-top:14px;text-align:center" onclick="closeModal()">關閉</button>`;
   $("modal-wrap").classList.add("show");
@@ -1734,7 +1734,7 @@ function openEditInvoiceModal(id){
       <button class="accent-btn" style="flex:1;padding:11px" onclick="submitEditInvoice('${inv.id}')">💾 儲存</button>
       <button class="icon-btn" style="flex:1;padding:11px;text-align:center" onclick="closeModal()">取消</button>
     </div>
-    ${currentUserRole==="admin"?`<button style="background:#7F1D1D;color:#FCA5A5;border:1px solid #991B1B;border-radius:10px;padding:10px;width:100%;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;margin-top:10px" onclick="deleteInvoice('${inv.id}')">🗑️ 刪除</button>`:""}`;
+    ${currentUserRole==="admin"?`<button style="background:#FECACA;color:#DC2626;border:1px solid #991B1B;border-radius:10px;padding:10px;width:100%;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;margin-top:10px" onclick="deleteInvoice('${inv.id}')">🗑️ 刪除</button>`:""}`;
   $("modal-wrap").classList.add("show");
   setTimeout(()=>{
     if(inv.photos&&inv.photos.length){
@@ -1798,7 +1798,7 @@ function renderPurchaseOrders(canManage){
             <span class="wo-tag">${po.id}</span>
             <span style="font-size:13px;font-weight:600">${esc(po.supplier)}</span>
             <span class="pill" style="background:${sc}22;color:${sc};font-size:10px">${po.status}</span>
-            ${po.urgent?'<span class="pill" style="background:#7F1D1D;color:#FCA5A5;font-size:10px">急件</span>':""}
+            ${po.urgent?'<span class="pill" style="background:#FECACA;color:#DC2626;font-size:10px">急件</span>':""}
           </div>
           <div style="font-size:11px;color:var(--muted);margin-top:3px">${esc(po.items?.map(i=>i.name).join("、")||"—")} · 工單:${esc(po.orderId||"—")} · ${ds}</div>
           <div style="font-size:12px;color:#F59E0B;margin-top:2px">NT$ ${Number(po.totalAmount||0).toLocaleString()}</div>
@@ -1895,7 +1895,7 @@ function openViewPOModal(id){
   </tr>`).join("");
   $("modal-box").innerHTML=`
     <div class="modal-head"><div class="modal-title">📦 採購單 ${po.id}</div><button class="close-btn" onclick="closeModal()">✕</button></div>
-    <div style="text-align:center;margin-bottom:14px"><span class="pill" style="background:${sc}22;color:${sc};font-size:14px;padding:6px 16px">${po.status}</span>${po.urgent?'<span class="pill" style="background:#7F1D1D;color:#FCA5A5;font-size:14px;padding:6px 16px;margin-left:8px">🚨 急件</span>':""}</div>
+    <div style="text-align:center;margin-bottom:14px"><span class="pill" style="background:${sc}22;color:${sc};font-size:14px;padding:6px 16px">${po.status}</span>${po.urgent?'<span class="pill" style="background:#FECACA;color:#DC2626;font-size:14px;padding:6px 16px;margin-left:8px">🚨 急件</span>':""}</div>
     ${[["採購單號",po.id],["供應商",po.supplier],["關聯工單",po.orderId||"—"],["預計到貨",po.eta||"—"],["付款條件",po.payTerms||"—"],["申請人",po.createdByEmail||"—"],["申請時間",ds],["總金額","NT$ "+Number(po.totalAmount||0).toLocaleString()]].map(([k,v])=>`<div class="detail-row"><span class="detail-key">${k}</span><span class="detail-val">${esc(String(v))}</span></div>`).join("")}
     <div style="margin-top:12px"><div class="lbl">採購項目</div>
       <div style="overflow-x:auto;margin-top:6px"><table style="width:100%;font-size:12px;border-collapse:collapse">
@@ -1904,9 +1904,9 @@ function openViewPOModal(id){
         <tr style="font-weight:700;border-top:2px solid var(--border2)"><td colspan="5" style="padding:6px;text-align:right">合計</td><td style="padding:6px;color:#F59E0B">$${Number(po.totalAmount||0).toLocaleString()}</td></tr>
       </table></div>
     </div>
-    ${po.note?`<div style="margin-top:10px"><div class="lbl">備註</div><div style="background:#0F172A;border-radius:8px;padding:10px;font-size:13px;color:var(--text);margin-top:4px">${esc(po.note)}</div></div>`:""}
-    ${po.approvedBy?`<div style="margin-top:10px"><div class="lbl">審核資訊</div><div style="background:#14532D33;border-radius:8px;padding:10px;font-size:13px;color:#86EFAC;margin-top:4px">${po.status==="駁回"?"❌ 駁回":"✅ 核准"} · ${esc(po.approvedBy)} · ${po.approvedTime?.toDate?.()?.toLocaleString("zh-TW")||""}</div></div>`:""}
-    ${po.receivedItems?.length?`<div style="margin-top:10px"><div class="lbl">到貨記錄</div>${po.receivedItems.map(ri=>`<div style="background:#0F172A;border-radius:8px;padding:8px;font-size:12px;margin-top:4px;color:var(--text)">${ri.time} · ${esc(ri.note||"到貨驗收")}</div>`).join("")}</div>`:""}
+    ${po.note?`<div style="margin-top:10px"><div class="lbl">備註</div><div style="background:#F1F5F9;border-radius:8px;padding:10px;font-size:13px;color:var(--text);margin-top:4px">${esc(po.note)}</div></div>`:""}
+    ${po.approvedBy?`<div style="margin-top:10px"><div class="lbl">審核資訊</div><div style="background:#D1FAE533;border-radius:8px;padding:10px;font-size:13px;color:#059669;margin-top:4px">${po.status==="駁回"?"❌ 駁回":"✅ 核准"} · ${esc(po.approvedBy)} · ${po.approvedTime?.toDate?.()?.toLocaleString("zh-TW")||""}</div></div>`:""}
+    ${po.receivedItems?.length?`<div style="margin-top:10px"><div class="lbl">到貨記錄</div>${po.receivedItems.map(ri=>`<div style="background:#F1F5F9;border-radius:8px;padding:8px;font-size:12px;margin-top:4px;color:var(--text)">${ri.time} · ${esc(ri.note||"到貨驗收")}</div>`).join("")}</div>`:""}
     ${renderPhotos(po.photos)}
     <button class="icon-btn" style="width:100%;padding:10px;margin-top:14px;text-align:center" onclick="closeModal()">關閉</button>`;
   $("modal-wrap").classList.add("show");
@@ -1935,7 +1935,7 @@ function openEditPOModal(id){
       <button class="accent-btn" style="flex:1;padding:11px" onclick="submitEditPO('${po.id}')">💾 儲存</button>
       <button class="icon-btn" style="flex:1;padding:11px;text-align:center" onclick="closeModal()">取消</button>
     </div>
-    ${currentUserRole==="admin"?`<button style="background:#7F1D1D;color:#FCA5A5;border:1px solid #991B1B;border-radius:10px;padding:10px;width:100%;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;margin-top:10px" onclick="deletePO('${po.id}')">🗑️ 刪除</button>`:""}`;
+    ${currentUserRole==="admin"?`<button style="background:#FECACA;color:#DC2626;border:1px solid #991B1B;border-radius:10px;padding:10px;width:100%;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;margin-top:10px" onclick="deletePO('${po.id}')">🗑️ 刪除</button>`:""}`;
   $("modal-wrap").classList.add("show");
   setTimeout(()=>{
     if(po.photos&&po.photos.length){
@@ -2087,7 +2087,7 @@ function openViewSupplierModal(id){
   $("modal-box").innerHTML=`
     <div class="modal-head"><div class="modal-title">🏭 供應商 ${esc(s.name)}</div><button class="close-btn" onclick="closeModal()">✕</button></div>
     ${[["公司名稱",s.name],["分類",s.category||"一般"],["聯絡人",s.contact||"—"],["電話",s.phone||"—"],["Email",s.email||"—"],["統一編號",s.taxId||"—"],["地址",s.address||"—"],["付款條件",s.payTerms||"—"]].map(([k,v])=>`<div class="detail-row"><span class="detail-key">${k}</span><span class="detail-val">${esc(v)}</span></div>`).join("")}
-    ${s.note?`<div style="margin-top:10px"><div class="lbl">備註</div><div style="background:#0F172A;border-radius:8px;padding:10px;font-size:13px;color:var(--text);margin-top:4px">${esc(s.note)}</div></div>`:""}
+    ${s.note?`<div style="margin-top:10px"><div class="lbl">備註</div><div style="background:#F1F5F9;border-radius:8px;padding:10px;font-size:13px;color:var(--text);margin-top:4px">${esc(s.note)}</div></div>`:""}
     <div style="margin-top:14px"><div class="lbl">相關採購單 (${poList.length})</div>
       ${poList.slice(0,5).map(po=>`<div class="row-item" style="cursor:pointer" onclick="closeModal();setTimeout(()=>openViewPOModal('${po.id}'),200)"><span class="wo-tag">${po.id}</span><span style="font-size:12px;color:${PO_STATUS[po.status]||"#64748B"}">${po.status}</span><span style="font-size:12px;color:#F59E0B;margin-left:auto">$${Number(po.totalAmount||0).toLocaleString()}</span></div>`).join("")}
     </div>
@@ -2117,7 +2117,7 @@ function openEditSupplierModal(id){
       <button class="accent-btn" style="flex:1;padding:11px" onclick="submitEditSupplier('${s.id}')">💾 儲存</button>
       <button class="icon-btn" style="flex:1;padding:11px;text-align:center" onclick="closeModal()">取消</button>
     </div>
-    ${currentUserRole==="admin"?`<button style="background:#7F1D1D;color:#FCA5A5;border:1px solid #991B1B;border-radius:10px;padding:10px;width:100%;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;margin-top:10px" onclick="deleteSupplier('${s.id}')">🗑️ 刪除</button>`:""}`;
+    ${currentUserRole==="admin"?`<button style="background:#FECACA;color:#DC2626;border:1px solid #991B1B;border-radius:10px;padding:10px;width:100%;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;margin-top:10px" onclick="deleteSupplier('${s.id}')">🗑️ 刪除</button>`:""}`;
   $("modal-wrap").classList.add("show");
 }
 async function submitEditSupplier(id){
@@ -2210,8 +2210,8 @@ function renderStock(){
     <div class="kpi-card" style="border-top:3px solid #F59E0B"><div class="kpi-label">庫存總值</div><div class="kpi-val" style="color:#F59E0B;font-size:18px">$${Math.round(totalValue/1000)}K</div></div>
     <div class="kpi-card" style="border-top:3px solid #22C55E"><div class="kpi-label">分類數</div><div class="kpi-val" style="color:#22C55E">${Object.keys(byCat).length}</div></div>
   </div>
-  ${lowStock.length>0?`<div class="card" style="border:1px solid #7F1D1D">
-    <div class="card-title" style="color:#FCA5A5">🚨 低庫存警示</div>
+  ${lowStock.length>0?`<div class="card" style="border:1px solid #FECACA">
+    <div class="card-title" style="color:#DC2626">🚨 低庫存警示</div>
     ${lowStock.map(i=>`<div class="row-item"><div style="flex:1"><span style="font-weight:700">${esc(i.name)}</span> <span style="color:var(--muted);font-size:11px">(${esc(i.spec||"")})</span></div><div style="color:#EF4444;font-weight:700">剩 ${i.qty} ${esc(i.unit||"件")} / 安全量 ${i.safetyStock}</div></div>`).join("")}
   </div>`:""}
   <div class="card">
@@ -2224,7 +2224,7 @@ function renderStock(){
       <tr style="color:var(--muted);border-bottom:1px solid var(--border2)"><th style="padding:8px 6px;text-align:left">品名</th><th style="padding:8px 6px;text-align:left">規格</th><th style="padding:8px 6px">分類</th><th style="padding:8px 6px">庫存</th><th style="padding:8px 6px">安全量</th><th style="padding:8px 6px">單位成本</th><th style="padding:8px 6px">小計</th><th style="padding:8px 6px">操作</th></tr>
       ${inv.map(i=>{
         const low=i.safetyStock&&i.qty<=i.safetyStock;
-        return `<tr style="border-bottom:1px solid var(--border);${low?"background:#7F1D1D22":""}">
+        return `<tr style="border-bottom:1px solid var(--border);${low?"background:#FECACA22":""}">
           <td style="padding:8px 6px;font-weight:600">${esc(i.name)}</td>
           <td style="padding:8px 6px">${esc(i.spec||"—")}</td>
           <td style="padding:8px 6px;text-align:center"><span class="pill" style="background:#3B82F622;color:#3B82F6;font-size:10px">${esc(i.category||"其他")}</span></td>
@@ -2306,7 +2306,7 @@ function openEditItemModal(id){
       <button class="accent-btn" style="flex:1;padding:11px" onclick="submitEditItem('${i.id}')">💾 儲存</button>
       <button class="icon-btn" style="flex:1;padding:11px;text-align:center" onclick="closeModal()">取消</button>
     </div>
-    ${currentUserRole==="admin"?`<button style="background:#7F1D1D;color:#FCA5A5;border:1px solid #991B1B;border-radius:10px;padding:10px;width:100%;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;margin-top:10px" onclick="deleteItem('${i.id}')">🗑️ 刪除</button>`:""}`;
+    ${currentUserRole==="admin"?`<button style="background:#FECACA;color:#DC2626;border:1px solid #991B1B;border-radius:10px;padding:10px;width:100%;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;margin-top:10px" onclick="deleteItem('${i.id}')">🗑️ 刪除</button>`:""}`;
   $("modal-wrap").classList.add("show");
 }
 async function submitEditItem(id){
@@ -2578,7 +2578,7 @@ function renderDesignProjects(){
             <span class="wo-tag">${p.id}</span>
             <span style="font-size:13px;font-weight:600">${esc(p.projectName)}</span>
             <span class="pill" style="background:${sc}22;color:${sc};font-size:10px">${p.status}</span>
-            ${p.priority==="高"?'<span class="pill" style="background:#7F1D1D;color:#FCA5A5;font-size:10px">急件</span>':""}
+            ${p.priority==="高"?'<span class="pill" style="background:#FECACA;color:#DC2626;font-size:10px">急件</span>':""}
           </div>
           <div style="font-size:11px;color:var(--muted);margin-top:3px">${esc(p.customer||"")} · 工單:${esc(p.orderId||"—")} · ${esc(p.designer||"未指派")} · ${esc(p.tool||"")}</div>
           <div style="display:flex;gap:4px;margin-top:5px;align-items:center">
@@ -2723,7 +2723,7 @@ function openEditDesignModal(id){
       <button class="accent-btn" style="flex:1;padding:11px" onclick="submitEditDesign('${p.id}')">💾 儲存</button>
       <button class="icon-btn" style="flex:1;padding:11px;text-align:center" onclick="closeModal()">取消</button>
     </div>
-    ${currentUserRole==="admin"?`<button style="background:#7F1D1D;color:#FCA5A5;border:1px solid #991B1B;border-radius:10px;padding:10px;width:100%;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;margin-top:10px" onclick="deleteDesign('${p.id}')">🗑️ 刪除</button>`:""}`;
+    ${currentUserRole==="admin"?`<button style="background:#FECACA;color:#DC2626;border:1px solid #991B1B;border-radius:10px;padding:10px;width:100%;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;margin-top:10px" onclick="deleteDesign('${p.id}')">🗑️ 刪除</button>`:""}`;
   $("modal-wrap").classList.add("show");
   setTimeout(()=>{
     if(p.photos&&p.photos.length){const el=$("edsg-photos");if(el){el.value=JSON.stringify(p.photos);renderPhotoPreview("edsg-photos",p.photos);}}
@@ -2755,7 +2755,7 @@ function openDesignStageModal(id){
       ${DSG_STAGES.map(st=>{
         const ss=stages[st.id]||{};
         const stOpts=["待開始","進行中","完成"].map(s=>`<option${ss.status===s?" selected":""}>${s}</option>`).join("");
-        return `<div style="background:#0F172A;border-radius:10px;padding:12px;margin-bottom:8px;border-left:3px solid ${st.color}" data-stage="${st.id}">
+        return `<div style="background:#F1F5F9;border-radius:10px;padding:12px;margin-bottom:8px;border-left:3px solid ${st.color}" data-stage="${st.id}">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
             <span style="font-weight:700;font-size:13px">${st.icon} ${st.label}</span>
             <select class="inp dss-status" style="width:100px;font-size:11px">${stOpts}</select>
@@ -2974,7 +2974,7 @@ function openBomEditModal(projectId){
 }
 function bomEditRow(b,idx){
   b=b||{};
-  return `<div class="bom-edit-row" style="background:#0F172A;border-radius:10px;padding:10px;margin-bottom:8px;position:relative">
+  return `<div class="bom-edit-row" style="background:#F1F5F9;border-radius:10px;padding:10px;margin-bottom:8px;position:relative">
     <button onclick="this.parentElement.remove()" style="position:absolute;top:6px;right:6px;background:#EF4444;color:#fff;border:none;border-radius:50%;width:20px;height:20px;font-size:11px;cursor:pointer;display:flex;align-items:center;justify-content:center">✕</button>
     <div style="display:grid;grid-template-columns:2fr 1.5fr 1fr;gap:6px">
       <div><label class="lbl" style="font-size:10px">品名*</label><input class="inp bom-e-name" value="${esc(b.name||"")}"></div>
@@ -3138,12 +3138,12 @@ function openBomOcrModal(projectId){
         <button class="chip" id="ocr-mode-titleblock" onclick="setOcrMode('titleblock')">📋 標題欄擷取</button>
         <button class="chip" id="ocr-mode-table" onclick="setOcrMode('table')">📊 BOM表格辨識</button>
       </div>
-      <div id="ocr-mode-desc" style="font-size:11px;color:var(--muted);margin-top:6px;padding:6px;background:#0F172A;border-radius:6px">📐 從工程圖面PDF抓取零件名稱、材質標註、尺寸規格、數量等細項</div>
+      <div id="ocr-mode-desc" style="font-size:11px;color:var(--muted);margin-top:6px;padding:6px;background:#F1F5F9;border-radius:6px">📐 從工程圖面PDF抓取零件名稱、材質標註、尺寸規格、數量等細項</div>
     </div>
     <div style="margin-bottom:14px">
       <label class="lbl">上傳 PDF 圖面檔案 或 圖片</label>
       <div style="display:flex;gap:8px;margin-top:6px">
-        <label style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:120px;border:2px dashed var(--blue);border-radius:12px;cursor:pointer;color:var(--blue);text-align:center;padding:16px;transition:background .2s" onmouseover="this.style.background='#0F2344'" onmouseout="this.style.background=''">
+        <label style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:120px;border:2px dashed var(--blue);border-radius:12px;cursor:pointer;color:var(--blue);text-align:center;padding:16px;transition:background .2s" onmouseover="this.style.background='#DBEAFE'" onmouseout="this.style.background=''">
           <span style="font-size:36px">📄</span>
           <span style="font-size:13px;margin-top:6px;font-weight:700">PDF 圖面檔案</span>
           <span style="font-size:10px;color:var(--muted);margin-top:2px">AutoCAD/SolidWorks/PDF</span>
@@ -3842,16 +3842,16 @@ function renderQcList(type){
       <button class="accent-btn" onclick="openNewInspectionModal('${type}')">＋ 新建檢驗單</button>
     </div>
     <div style="display:flex;gap:12px;margin-bottom:14px">
-      <div style="flex:1;background:#14532D22;border:1px solid #14532D;border-radius:8px;padding:10px;text-align:center">
+      <div style="flex:1;background:#D1FAE522;border:1px solid #D1FAE5;border-radius:8px;padding:10px;text-align:center">
         <div style="font-size:20px;font-weight:800;color:#22C55E">${passCount}</div><div style="font-size:11px;color:var(--muted)">合格</div>
       </div>
-      <div style="flex:1;background:#7F1D1D22;border:1px solid #7F1D1D;border-radius:8px;padding:10px;text-align:center">
+      <div style="flex:1;background:#FECACA22;border:1px solid #FECACA;border-radius:8px;padding:10px;text-align:center">
         <div style="font-size:20px;font-weight:800;color:#EF4444">${failCount}</div><div style="font-size:11px;color:var(--muted)">不合格</div>
       </div>
-      <div style="flex:1;background:#17255422;border:1px solid #172554;border-radius:8px;padding:10px;text-align:center">
+      <div style="flex:1;background:#DBEAFE22;border:1px solid #DBEAFE;border-radius:8px;padding:10px;text-align:center">
         <div style="font-size:20px;font-weight:800;color:#3B82F6">${list.length}</div><div style="font-size:11px;color:var(--muted)">總件數</div>
       </div>
-      <div style="flex:1;background:#14532D22;border:1px solid #14532D;border-radius:8px;padding:10px;text-align:center">
+      <div style="flex:1;background:#D1FAE522;border:1px solid #D1FAE5;border-radius:8px;padding:10px;text-align:center">
         <div style="font-size:20px;font-weight:800;color:#10B981">${list.length>0?Math.round(passCount/list.length*100):0}%</div><div style="font-size:11px;color:var(--muted)">合格率</div>
       </div>
     </div>
@@ -3877,7 +3877,7 @@ function renderQcList(type){
         <span>檢驗員：${esc(q.inspector||"")}</span>
         <span>${q.createdTime?new Date(q.createdTime.toDate()).toLocaleDateString("zh-TW"):""}</span>
       </div>
-      ${(q.defectItems&&q.defectItems.length>0)?`<div style="margin-top:8px;display:flex;gap:4px;flex-wrap:wrap">${q.defectItems.map(d=>`<span style="background:#7F1D1D;color:#FCA5A5;padding:2px 8px;border-radius:4px;font-size:10px">${esc(d)}</span>`).join("")}</div>`:""}
+      ${(q.defectItems&&q.defectItems.length>0)?`<div style="margin-top:8px;display:flex;gap:4px;flex-wrap:wrap">${q.defectItems.map(d=>`<span style="background:#FECACA;color:#DC2626;padding:2px 8px;border-radius:4px;font-size:10px">${esc(d)}</span>`).join("")}</div>`:""}
       ${q.photos&&q.photos.length>0?`<div style="display:flex;gap:4px;margin-top:8px">${q.photos.slice(0,4).map((p,pi)=>`<img src="${p}" style="width:48px;height:48px;object-fit:cover;border-radius:6px;cursor:pointer" onclick="openPhotoFull(${pi},this)">`).join("")}${q.photos.length>4?`<span style="font-size:11px;color:var(--muted);align-self:center">+${q.photos.length-4}</span>`:""}</div>`:""}
     </div>`;
   }).join("")}`;
@@ -4033,8 +4033,8 @@ function viewInspection(id){
           <td style="padding:6px;text-align:center;color:${c.result==="pass"?"#22C55E":"#EF4444"};font-weight:700">${c.result==="pass"?"✓":"✕"}</td>
         </tr>`).join("")}
       </table></div>`:""}
-    ${(q.defectItems&&q.defectItems.length>0)?`<div class="lbl">不良項目</div><div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:12px">${q.defectItems.map(d=>`<span style="background:#7F1D1D;color:#FCA5A5;padding:2px 8px;border-radius:4px;font-size:11px">${esc(d)}</span>`).join("")}</div>`:""}
-    ${q.note?`<div class="lbl">備註</div><div style="font-size:13px;padding:8px;background:#0F172A;border-radius:6px;margin-bottom:12px">${esc(q.note)}</div>`:""}
+    ${(q.defectItems&&q.defectItems.length>0)?`<div class="lbl">不良項目</div><div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:12px">${q.defectItems.map(d=>`<span style="background:#FECACA;color:#DC2626;padding:2px 8px;border-radius:4px;font-size:11px">${esc(d)}</span>`).join("")}</div>`:""}
+    ${q.note?`<div class="lbl">備註</div><div style="font-size:13px;padding:8px;background:#F1F5F9;border-radius:6px;margin-bottom:12px">${esc(q.note)}</div>`:""}
     ${q.photos&&q.photos.length>0?`<div class="lbl">照片</div><div style="display:flex;gap:6px;flex-wrap:wrap">${q.photos.map((p,pi)=>`<img src="${p}" style="width:80px;height:80px;object-fit:cover;border-radius:8px;cursor:pointer" onclick="openPhotoFull(${pi},this)">`).join("")}</div>`:""}
     ${q.result==="pending"?`<div style="display:flex;gap:8px;margin-top:14px">
       <button class="accent-btn" style="flex:1;padding:12px;background:#22C55E" onclick="judgeInspection('${q.id}','pass');closeModal()">✓ 判定合格</button>
@@ -4101,7 +4101,7 @@ function renderDefects(){
         ${d.orderId?`<span>工單：${esc(d.orderId)}</span>`:""}
         <span>${d.createdTime?new Date(d.createdTime.toDate()).toLocaleDateString("zh-TW"):""}</span>
       </div>
-      ${(d.defectItems&&d.defectItems.length)?`<div style="margin-top:6px;display:flex;gap:4px;flex-wrap:wrap">${d.defectItems.map(x=>`<span style="background:#7F1D1D;color:#FCA5A5;padding:2px 8px;border-radius:4px;font-size:10px">${esc(x)}</span>`).join("")}</div>`:""}
+      ${(d.defectItems&&d.defectItems.length)?`<div style="margin-top:6px;display:flex;gap:4px;flex-wrap:wrap">${d.defectItems.map(x=>`<span style="background:#FECACA;color:#DC2626;padding:2px 8px;border-radius:4px;font-size:10px">${esc(x)}</span>`).join("")}</div>`:""}
     </div>`;
   }).join("")}`;
 }
@@ -4252,7 +4252,7 @@ function openCapaDetail(id){
       <div><span style="color:var(--muted)">建立日：</span>${c.createdTime?new Date(c.createdTime.toDate()).toLocaleDateString("zh-TW"):""}</div>
     </div>
     <div style="font-size:13px;line-height:1.8">
-      ${c.description?`<div style="margin-bottom:10px"><div class="lbl">D2 問題描述</div><div style="padding:8px;background:#0F172A;border-radius:6px">${esc(c.description)}</div></div>`:""}
+      ${c.description?`<div style="margin-bottom:10px"><div class="lbl">D2 問題描述</div><div style="padding:8px;background:#F1F5F9;border-radius:6px">${esc(c.description)}</div></div>`:""}
       <div style="margin-bottom:10px"><div class="lbl">D4 根本原因</div><textarea class="inp" id="capa-e-root" rows="2">${esc(c.rootCause||"")}</textarea></div>
       <div style="margin-bottom:10px"><div class="lbl">D5 矯正措施</div><textarea class="inp" id="capa-e-corrective" rows="2">${esc(c.correctiveAction||"")}</textarea></div>
       <div style="margin-bottom:10px"><div class="lbl">D7 預防措施</div><textarea class="inp" id="capa-e-preventive" rows="2">${esc(c.preventiveAction||"")}</textarea></div>
@@ -4322,16 +4322,16 @@ function renderQcReport(){
   <div class="card">
     <div class="card-title">📊 品質總覽</div>
     <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px">
-      <div style="background:#17255422;border:1px solid #172554;border-radius:10px;padding:14px;text-align:center">
+      <div style="background:#DBEAFE22;border:1px solid #DBEAFE;border-radius:10px;padding:14px;text-align:center">
         <div style="font-size:26px;font-weight:800;color:#3B82F6">${total}</div><div style="font-size:11px;color:var(--muted)">總檢驗數</div>
       </div>
-      <div style="background:#14532D22;border:1px solid #14532D;border-radius:10px;padding:14px;text-align:center">
+      <div style="background:#D1FAE522;border:1px solid #D1FAE5;border-radius:10px;padding:14px;text-align:center">
         <div style="font-size:26px;font-weight:800;color:#22C55E">${passRate}%</div><div style="font-size:11px;color:var(--muted)">總合格率</div>
       </div>
-      <div style="background:#7F1D1D22;border:1px solid #7F1D1D;border-radius:10px;padding:14px;text-align:center">
+      <div style="background:#FECACA22;border:1px solid #FECACA;border-radius:10px;padding:14px;text-align:center">
         <div style="font-size:26px;font-weight:800;color:#EF4444">${defects.filter(d=>d.status==="open").length}</div><div style="font-size:11px;color:var(--muted)">待處理不良</div>
       </div>
-      <div style="background:#451A0322;border:1px solid #451A03;border-radius:10px;padding:14px;text-align:center">
+      <div style="background:#FEF3C722;border:1px solid #FEF3C7;border-radius:10px;padding:14px;text-align:center">
         <div style="font-size:26px;font-weight:800;color:#F59E0B">${capaOpen}</div><div style="font-size:11px;color:var(--muted)">進行中CAPA</div>
       </div>
     </div>
@@ -4427,7 +4427,7 @@ function renderLine(){
     ${state.lineLog.map(l=>`<div class="row-item">
       <div class="line-ava">${l.to.slice(0,1)}</div>
       <div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:600">${esc(l.to)}</div><div style="font-size:11px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(l.msg.split("\n")[0])}</div></div>
-      <div style="text-align:right;flex-shrink:0"><div style="font-size:11px;color:#22C55E">${l.time}</div><span class="pill" style="background:#14532D;color:#86EFAC;font-size:9px;margin-top:3px;display:inline-block">${l.status}</span></div>
+      <div style="text-align:right;flex-shrink:0"><div style="font-size:11px;color:#22C55E">${l.time}</div><span class="pill" style="background:#D1FAE5;color:#059669;font-size:9px;margin-top:3px;display:inline-block">${l.status}</span></div>
     </div>`).join("")}
   </div>`;
 }
@@ -4485,7 +4485,7 @@ function renderAnalytics(){
           <td style="font-weight:600;white-space:nowrap">${esc(c.name)}</td>
           <td style="color:var(--muted);text-align:center">${c.orders}</td>
           <td style="color:#10B981;font-weight:700;font-family:'Syne',sans-serif;white-space:nowrap">${c.revenue>0?`$${Math.round(c.revenue/1000)}K`:"—"}</td>
-          <td><span class="pill" style="background:${c.delayed>0?"#7F1D1D":"#14532D"};color:${c.delayed>0?"#FCA5A5":"#86EFAC"};font-size:10px">${c.orders>0?Math.round(c.delayed/c.orders*100):0}%</span></td>
+          <td><span class="pill" style="background:${c.delayed>0?"#FECACA":"#D1FAE5"};color:${c.delayed>0?"#DC2626":"#059669"};font-size:10px">${c.orders>0?Math.round(c.delayed/c.orders*100):0}%</span></td>
         </tr>`).join("")}</tbody>
       </table>
     </div>
@@ -4518,7 +4518,7 @@ function renderUserList(){
         <tbody>${state.users.map(u=>`<tr>
           <td style="font-weight:600;white-space:nowrap">${esc(u.email)}</td>
           <td>
-            <select style="background:#060C1A;border:1px solid var(--border2);border-radius:6px;padding:4px 8px;color:var(--text);font-size:12px;cursor:pointer" onchange="updateUserRole('${u.uid}',this.value)">
+            <select style="background:#F8FAFC;border:1px solid var(--border2);border-radius:6px;padding:4px 8px;color:var(--text);font-size:12px;cursor:pointer" onchange="updateUserRole('${u.uid}',this.value)">
               ${customRoles.map(r=>`<option value="${r.id}"${u.role===r.id?" selected":""}>${esc(r.label)}</option>`).join("")}
             </select>
           </td>
@@ -4548,7 +4548,7 @@ function renderRoleManager(){
     <div style="font-size:12px;color:var(--muted);margin-bottom:14px">管理系統中所有角色。系統角色（管理員、主管）不可刪除。新增角色後可在「頁面權限」設定可存取的功能頁面。</div>
     <div style="display:flex;flex-direction:column;gap:8px">
       ${customRoles.map((r,i)=>`
-        <div style="display:flex;align-items:center;gap:10px;padding:12px;background:#0F172A;border-radius:10px;border-left:4px solid ${r.color||"#64748B"}">
+        <div style="display:flex;align-items:center;gap:10px;padding:12px;background:#F1F5F9;border-radius:10px;border-left:4px solid ${r.color||"#64748B"}">
           <div style="width:36px;height:36px;border-radius:50%;background:${r.color||"#64748B"}22;border:2px solid ${r.color||"#64748B"};display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:800;color:${r.color||"#64748B"};flex-shrink:0">${(r.label||"?").charAt(0)}</div>
           <div style="flex:1">
             <div style="font-weight:700;font-size:14px">${esc(r.label)}</div>
@@ -4773,17 +4773,17 @@ async function initializeTestData(){
 function renderNotif(){
   const delayed=state.orders.filter(o=>o.status==="延誤");
   const near=state.orders.filter(o=>{const d=daysLeft(o.deadline);return d>=0&&d<=2&&o.status!=="完成";});
-  const TYPE_STYLE={advance:{bg:"#172554",c:"#60A5FA",i:"▶"},warn:{bg:"#451A03",c:"#FDE68A",i:"⚠"},success:{bg:"#14532D",c:"#86EFAC",i:"✓"},info:{bg:"var(--border2)",c:"#94A3B8",i:"ℹ"}};
+  const TYPE_STYLE={advance:{bg:"#DBEAFE",c:"#2563EB",i:"▶"},warn:{bg:"#FEF3C7",c:"#D97706",i:"⚠"},success:{bg:"#D1FAE5",c:"#059669",i:"✓"},info:{bg:"var(--border2)",c:"#94A3B8",i:"ℹ"}};
   return `
   ${(delayed.length>0||near.length>0)?`<div class="card">
     <div class="card-title">🚨 需要立即處理</div>
-    ${delayed.map(o=>`<div style="background:#2D0A0A;border:1px solid #7F1D1D;border-radius:10px;padding:12px;margin-bottom:8px">
-      <div style="display:flex;gap:8px;align-items:center"><span class="wo-tag">${o.id}</span><span style="font-size:13px;color:#FCA5A5;font-weight:700">${esc(o.customer)} — 工單延誤</span></div>
-      <div style="font-size:12px;color:#F87171;margin-top:4px">${esc(o.part)} · 截止日：${o.deadline}</div>
+    ${delayed.map(o=>`<div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:10px;padding:12px;margin-bottom:8px">
+      <div style="display:flex;gap:8px;align-items:center"><span class="wo-tag">${o.id}</span><span style="font-size:13px;color:#DC2626;font-weight:700">${esc(o.customer)} — 工單延誤</span></div>
+      <div style="font-size:12px;color:#DC2626;margin-top:4px">${esc(o.part)} · 截止日：${o.deadline}</div>
     </div>`).join("")}
-    ${near.map(o=>{const d=daysLeft(o.deadline);return `<div style="background:#2D1B00;border:1px solid #78350F;border-radius:10px;padding:12px;margin-bottom:8px">
-      <div style="display:flex;gap:8px;align-items:center"><span class="wo-tag">${o.id}</span><span style="font-size:13px;color:#FDE68A;font-weight:700">${esc(o.customer)} — 即將到期</span></div>
-      <div style="font-size:12px;color:#FCD34D;margin-top:4px">${esc(o.part)} · 剩 ${d} 天 · ${stg(o.stage)?.label}</div>
+    ${near.map(o=>{const d=daysLeft(o.deadline);return `<div style="background:#FFFBEB;border:1px solid #D97706;border-radius:10px;padding:12px;margin-bottom:8px">
+      <div style="display:flex;gap:8px;align-items:center"><span class="wo-tag">${o.id}</span><span style="font-size:13px;color:#D97706;font-weight:700">${esc(o.customer)} — 即將到期</span></div>
+      <div style="font-size:12px;color:#B45309;margin-top:4px">${esc(o.part)} · 剩 ${d} 天 · ${stg(o.stage)?.label}</div>
     </div>`;}).join("")}
   </div>`:""}
   <div class="card">
@@ -4794,7 +4794,7 @@ function renderNotif(){
       return `<div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--bg)">
         <div style="width:36px;height:36px;border-radius:10px;background:${cnt>0?s.color+"22":"var(--border2)"};border:1px solid ${cnt>0?s.color:"var(--border2)"};display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0">${s.icon}</div>
         <div style="flex:1"><div style="font-size:13px;font-weight:700">${s.label}</div><div style="font-size:11px;color:var(--muted)">${cnt}件在製${del>0?` · ${del}件延誤`:""}</div></div>
-        <span class="pill" style="background:${cnt>2?"#7F1D1D":cnt>0?"#172554":"#14532D"};color:${cnt>2?"#FCA5A5":cnt>0?"#93C5FD":"#86EFAC"};font-size:11px">${cnt>2?"壅塞":cnt>0?"運行中":"空閒"}</span>
+        <span class="pill" style="background:${cnt>2?"#FECACA":cnt>0?"#DBEAFE":"#D1FAE5"};color:${cnt>2?"#DC2626":cnt>0?"#2563EB":"#059669"};font-size:11px">${cnt>2?"壅塞":cnt>0?"運行中":"空閒"}</span>
       </div>`;
     }).join("")}
   </div>
@@ -4890,7 +4890,7 @@ function openViewModal(id){
   const si=stgIdx(o.stage), s=stg(o.stage), pct=Math.round(si/(STAGES.length-1)*100);
   $("modal-box").innerHTML=`
     <div class="modal-head"><div class="modal-title">${o.id} 工單詳情</div><button class="close-btn" onclick="closeModal()">✕</button></div>
-    <div style="background:#0F172A;border-radius:10px;padding:12px;margin-bottom:14px">
+    <div style="background:#F1F5F9;border-radius:10px;padding:12px;margin-bottom:14px">
       <div style="display:flex;justify-content:space-between;margin-bottom:8px">
         <span style="font-size:13px;color:${s.color};font-weight:700">${s.icon} ${s.label}</span>
         <span style="font-size:13px;color:#10B981;font-weight:700">${pct}%</span>
@@ -4984,7 +4984,7 @@ function openEditOrderModal(id){
       <button class="accent-btn" style="flex:1;padding:11px" onclick="submitEditOrder('${o.id}')">💾 儲存變更</button>
       <button class="icon-btn" style="flex:1;padding:11px;text-align:center" onclick="closeModal()">取消</button>
     </div>
-    ${currentUserRole==="admin"?`<button style="background:#7F1D1D;color:#FCA5A5;border:1px solid #991B1B;border-radius:10px;padding:10px;width:100%;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;margin-top:10px" onclick="deleteOrder('${o.id}')">🗑️ 刪除此工單</button>`:""}`;
+    ${currentUserRole==="admin"?`<button style="background:#FECACA;color:#DC2626;border:1px solid #991B1B;border-radius:10px;padding:10px;width:100%;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;margin-top:10px" onclick="deleteOrder('${o.id}')">🗑️ 刪除此工單</button>`:""}`;
   $("modal-wrap").classList.add("show");
   setTimeout(()=>{
     if(o.photos&&o.photos.length){
@@ -5030,8 +5030,8 @@ $("modal-wrap").addEventListener("click",e=>{if(e.target===$("modal-wrap"))close
 window.addEventListener("load",()=>{
   if(navigator.standalone===false && /iPhone|iPad|iPod/.test(navigator.userAgent)){
     const b=document.createElement("div");
-    b.style.cssText="position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:#172554;color:#93C5FD;padding:10px 16px;border-radius:12px;font-size:12px;font-family:'DM Sans',sans-serif;z-index:9000;text-align:center;border:1px solid #1E40AF;max-width:280px";
-    b.innerHTML="📱 點 Safari 分享按鈕 → <strong>加入主畫面</strong>，即可像 App 使用！<br><button onclick='this.parentNode.remove()' style='background:none;border:none;color:#93C5FD;font-size:16px;cursor:pointer;float:right;margin-top:-6px'>✕</button>";
+    b.style.cssText="position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:#DBEAFE;color:#2563EB;padding:10px 16px;border-radius:12px;font-size:12px;font-family:'DM Sans',sans-serif;z-index:9000;text-align:center;border:1px solid #1E40AF;max-width:280px";
+    b.innerHTML="📱 點 Safari 分享按鈕 → <strong>加入主畫面</strong>，即可像 App 使用！<br><button onclick='this.parentNode.remove()' style='background:none;border:none;color:#2563EB;font-size:16px;cursor:pointer;float:right;margin-top:-6px'>✕</button>";
     document.body.appendChild(b);
     setTimeout(()=>b.remove(),8000);
   }
